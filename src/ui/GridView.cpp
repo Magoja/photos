@@ -19,6 +19,7 @@ void GridView::reload() {
         photoIds_ = repo_.queryAll(pickedOnly);
     else
         photoIds_ = repo_.queryByFolder(folderId_, pickedOnly);
+    requested_.clear();
 }
 
 void GridView::onThumbReady(int64_t photoId, const std::vector<uint8_t>& jpegBytes) {
@@ -50,6 +51,11 @@ void GridView::render() {
 
             int64_t pid = photoIds_[idx];
             void*   tex = texMgr_.get(pid);
+            // Request async thumb load on first miss
+            if (tex == texMgr_.placeholder() && thumbMissCb_ && !requested_.count(pid)) {
+                requested_.insert(pid);
+                thumbMissCb_(pid, repo_.getThumbPath(pid));
+            }
             bool    sel = (pid == selectedId_);
 
             if (col > 0) ImGui::SameLine();

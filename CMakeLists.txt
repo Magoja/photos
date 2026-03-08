@@ -79,6 +79,7 @@ set(UI_SOURCES
     src/ui/FullscreenView.cpp
     src/ui/ImportDialog.cpp
     src/ui/ExportDialog.cpp
+    src/ui/SettingsPanel.cpp
 )
 
 set(EXPORT_SOURCES

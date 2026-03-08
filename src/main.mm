@@ -34,12 +34,14 @@
 #include "ui/FullscreenView.h"
 #include "ui/ImportDialog.h"
 #include "ui/ExportDialog.h"
+#include "ui/SettingsPanel.h"
 
 // Util
 #include "util/Platform.h"
 #include "util/ThreadPool.h"
 
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -146,6 +148,26 @@ int main(int /*argc*/, char** /*argv*/)
     ui::FullscreenView   fullscreen(repo, texMgr);
     ui::ImportDialog     importDlg(db);
     ui::ExportDialog     exportDlg(db);
+    ui::SettingsPanel    settingsPanel(repo, dbPath);
+
+    // ── Async thumbnail loader ─────────────────────────────────────────────────
+    struct ThumbResult { int64_t pid; std::vector<uint8_t> bytes; };
+    std::mutex               thumbMtx;
+    std::queue<ThumbResult>  thumbResQ;
+    util::ThreadPool         thumbPool(2);
+
+    grid.setThumbMissCallback([&](int64_t pid, std::string path) {
+        if (path.empty()) return;
+        thumbPool.submit([pid, path=std::move(path), &thumbMtx, &thumbResQ]() {
+            std::ifstream f(path, std::ios::binary);
+            if (!f) return;
+            std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)), {});
+            if (!bytes.empty()) {
+                std::lock_guard lk(thumbMtx);
+                thumbResQ.push({pid, std::move(bytes)});
+            }
+        });
+    });
 
     // Initial load
     folderPanel.refresh();
@@ -155,7 +177,7 @@ int main(int /*argc*/, char** /*argv*/)
         grid.loadFolder(fid, filterBar.mode());
     });
 
-    fullscreen.setPickChangedCallback([&](int64_t pid, int picked) {
+    fullscreen.setPickChangedCallback([&](int64_t /*pid*/, int /*picked*/) {
         grid.reload();
     });
 
@@ -168,7 +190,6 @@ int main(int /*argc*/, char** /*argv*/)
     import_ns::VolumeWatcher volWatcher;
     volWatcher.setMountedCallback([&](const import_ns::VolumeInfo& vol) {
         spdlog::info("Volume mounted uuid={} path={}", vol.uuid, vol.mountPath);
-        // Upsert volume in DB
         std::lock_guard lk(db.mutex());
         catalog::VolumeRecord v;
         v.uuid      = vol.uuid;
@@ -183,6 +204,8 @@ int main(int /*argc*/, char** /*argv*/)
 
     // ── Render loop ───────────────────────────────────────────────────────────
     bool running = true;
+    static constexpr float kStatusH = 24.f;
+
     while (running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -209,7 +232,21 @@ int main(int /*argc*/, char** /*argv*/)
             ImGui_ImplSDL2_NewFrame();
             ImGui::NewFrame();
 
-            // Handle F key to open fullscreen
+            // ── Drain thumbnail results (main thread upload) ──────────────────
+            {
+                std::queue<ThumbResult> local;
+                {
+                    std::lock_guard lk(thumbMtx);
+                    std::swap(local, thumbResQ);
+                }
+                while (!local.empty()) {
+                    auto& r = local.front();
+                    texMgr.upload(r.pid, r.bytes);
+                    local.pop();
+                }
+            }
+
+            // ── Handle F key to open fullscreen ──────────────────────────────
             if (ImGui::IsKeyPressed(ImGuiKey_F) &&
                 !ImGui::GetIO().WantTextInput &&
                 grid.selectedId() > 0 &&
@@ -219,10 +256,49 @@ int main(int /*argc*/, char** /*argv*/)
                 fullscreen.open(grid.selectedId());
             }
 
-            // Dockspace
+            // ── Menu bar ─────────────────────────────────────────────────────
+            if (ImGui::BeginMainMenuBar()) {
+                if (ImGui::BeginMenu("File")) {
+                    if (ImGui::MenuItem("Import...")) {
+                        std::string dest = repo.getSetting("library_root");
+                        if (dest.empty()) dest = util::appSupportDir() + "/library";
+                        importDlg.open("/Volumes", dest, thumbDir);
+                    }
+                    if (ImGui::MenuItem("Export Selected",
+                                        nullptr, false,
+                                        grid.selectedId() > 0)) {
+                        exportDlg.open({grid.selectedId()});
+                    }
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Settings...")) {
+                        settingsPanel.open();
+                    }
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Quit", "Cmd+Q")) {
+                        running = false;
+                    }
+                    ImGui::EndMenu();
+                }
+                if (ImGui::BeginMenu("View")) {
+                    bool isAll    = (filterBar.mode() == ui::FilterMode::All);
+                    bool isPicked = (filterBar.mode() == ui::FilterMode::Picked);
+                    if (ImGui::MenuItem("All Photos",   nullptr, isAll)) {
+                        filterBar.setMode(ui::FilterMode::All);
+                        grid.loadFolder(folderPanel.selectedFolder(), ui::FilterMode::All);
+                    }
+                    if (ImGui::MenuItem("Picked Only", nullptr, isPicked)) {
+                        filterBar.setMode(ui::FilterMode::Picked);
+                        grid.loadFolder(folderPanel.selectedFolder(), ui::FilterMode::Picked);
+                    }
+                    ImGui::EndMenu();
+                }
+                ImGui::EndMainMenuBar();
+            }
+
+            // ── DockSpace (leave room for status bar at bottom) ───────────────
             ImGuiViewport* vp = ImGui::GetMainViewport();
             ImGui::SetNextWindowPos(vp->WorkPos);
-            ImGui::SetNextWindowSize(vp->WorkSize);
+            ImGui::SetNextWindowSize({vp->WorkSize.x, vp->WorkSize.y - kStatusH});
             ImGui::SetNextWindowViewport(vp->ID);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0,0});
             ImGui::Begin("DockHost", nullptr,
@@ -234,43 +310,45 @@ int main(int /*argc*/, char** /*argv*/)
             ImGui::DockSpace(ImGui::GetID("DS"),{},ImGuiDockNodeFlags_PassthruCentralNode);
             ImGui::End();
 
-            // Left panel — folders
+            // ── Left panel — folders ──────────────────────────────────────────
             ImGui::SetNextWindowSize({220, -1}, ImGuiCond_FirstUseEver);
             ImGui::Begin("Folders");
             folderPanel.render();
             ImGui::End();
 
-            // Main grid panel
+            // ── Main photos panel ─────────────────────────────────────────────
             ImGui::Begin("Photos");
             // Filter bar at top
             if (filterBar.render()) {
                 grid.loadFolder(folderPanel.selectedFolder(), filterBar.mode());
             }
             ImGui::Separator();
-
-            // Import / Export buttons
-            if (ImGui::Button("Import...")) {
-                std::string dest = util::appSupportDir() + "/library";
-                importDlg.open("/Volumes", dest, thumbDir);
-            }
-            ImGui::SameLine();
-            if (grid.photoCount() > 0) {
-                if (ImGui::Button("Export Selected")) {
-                    exportDlg.open({grid.selectedId()});
-                }
-            }
-            ImGui::SameLine();
-            ImGui::Text("%.0f fps  |  %lld photos",
-                        io.Framerate, (long long)grid.photoCount());
-
-            ImGui::Separator();
             grid.render();
             ImGui::End();
 
-            // Fullscreen overlay
+            // ── Status bar (pinned to bottom) ─────────────────────────────────
+            ImGui::SetNextWindowPos({vp->WorkPos.x,
+                                     vp->WorkPos.y + vp->WorkSize.y - kStatusH});
+            ImGui::SetNextWindowSize({vp->WorkSize.x, kStatusH});
+            ImGui::SetNextWindowViewport(vp->ID);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {6.f, 4.f});
+            ImGui::Begin("##StatusBar", nullptr,
+                ImGuiWindowFlags_NoTitleBar   | ImGuiWindowFlags_NoResize   |
+                ImGuiWindowFlags_NoMove       | ImGuiWindowFlags_NoDocking  |
+                ImGuiWindowFlags_NoScrollbar  | ImGuiWindowFlags_NoSavedSettings |
+                ImGuiWindowFlags_NoBringToFrontOnFocus);
+            ImGui::PopStyleVar();
+            ImGui::Text("Photos: %lld  |  FPS: %.0f",
+                        (long long)grid.photoCount(), io.Framerate);
+            ImGui::End();
+
+            // ── Settings panel ────────────────────────────────────────────────
+            settingsPanel.render();
+
+            // ── Fullscreen overlay ────────────────────────────────────────────
             fullscreen.render();
 
-            // Dialogs
+            // ── Dialogs ───────────────────────────────────────────────────────
             importDlg.render();
             exportDlg.render();
 

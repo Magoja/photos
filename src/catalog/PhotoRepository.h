@@ -60,6 +60,7 @@ public:
     // ── Volumes ──────────────────────────────────────────────────────────────
     int64_t upsertVolume(const VolumeRecord& v);
     std::optional<VolumeRecord> findVolume(const std::string& uuid);
+    std::vector<VolumeRecord> listVolumes();
 
     // ── Folders ──────────────────────────────────────────────────────────────
     int64_t upsertFolder(const FolderRecord& f);
@@ -73,6 +74,7 @@ public:
 
     std::optional<PhotoRecord> findById(int64_t id);
     std::optional<int64_t>    findByHash(const std::string& hash);
+    std::string               getThumbPath(int64_t photoId);
 
     std::vector<int64_t> queryByFolder(int64_t folderId, bool pickedOnly = false);
     std::vector<int64_t> queryAll(bool pickedOnly = false);

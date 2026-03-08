@@ -9,6 +9,8 @@ public:
     FilterMode mode() const { return mode_; }
     bool       changed() const { return changed_; }
 
+    void setMode(FilterMode m) { mode_ = m; }
+
     // Call once per frame; returns true if filter changed
     bool render();
 

@@ -54,6 +54,21 @@ int64_t PhotoRepository::upsertVolume(const VolumeRecord& v) {
     return 0;
 }
 
+std::vector<VolumeRecord> PhotoRepository::listVolumes() {
+    std::vector<VolumeRecord> out;
+    auto s = db_.prepare("SELECT id,uuid,label,mount_path,last_seen FROM volumes ORDER BY label");
+    while (s.step()) {
+        VolumeRecord v;
+        v.id        = s.getInt64(0);
+        v.uuid      = s.getText(1);
+        v.label     = s.getText(2);
+        v.mountPath = s.getText(3);
+        v.lastSeen  = s.getText(4);
+        out.push_back(v);
+    }
+    return out;
+}
+
 std::optional<VolumeRecord> PhotoRepository::findVolume(const std::string& uuid) {
     auto s = db_.prepare("SELECT id,uuid,label,mount_path,last_seen FROM volumes WHERE uuid=?");
     s.bind(1, uuid);
@@ -170,6 +185,13 @@ std::optional<PhotoRecord> PhotoRepository::findById(int64_t id) {
     s.bind(1, id);
     if (!s.step()) return std::nullopt;
     return rowToPhoto(s);
+}
+
+std::string PhotoRepository::getThumbPath(int64_t photoId) {
+    auto s = db_.prepare("SELECT COALESCE(thumb_path,'') FROM photos WHERE id=?");
+    s.bind(1, photoId);
+    if (s.step()) return s.getText(0);
+    return "";
 }
 
 std::optional<int64_t> PhotoRepository::findByHash(const std::string& hash) {
