@@ -38,8 +38,10 @@ void GridView::render() {
     int   firstRow    = std::max(0, static_cast<int>(scrollY / rowH) - 1);
     int   lastRow     = std::min(totalRows, static_cast<int>((scrollY + viewH) / rowH) + 2);
 
-    // Reserve space for all rows (so scrollbar is correct)
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + firstRow * rowH);
+    // Skip rows above viewport — submit a Dummy so ImGui tracks the content height
+    if (firstRow > 0) {
+        ImGui::Dummy({panelW, firstRow * rowH});
+    }
 
     for (int row = firstRow; row < lastRow; ++row) {
         for (int col = 0; col < cols; ++col) {
@@ -71,10 +73,11 @@ void GridView::render() {
         }
     }
 
-    // Reserve space after last rendered row
+    // Reserve space for rows below viewport — Dummy commits the content height
     int remainRows = totalRows - lastRow;
-    if (remainRows > 0)
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + remainRows * rowH);
+    if (remainRows > 0) {
+        ImGui::Dummy({panelW, remainRows * rowH});
+    }
 }
 
 } // namespace ui
