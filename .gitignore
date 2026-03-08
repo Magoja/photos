@@ -1,0 +1,9 @@
+build/
+.DS_Store
+*.user
+.vscode/
+.idea/
+cmake-build-*/
+*.o
+*.a
+*.dylib
