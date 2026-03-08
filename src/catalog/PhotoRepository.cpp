@@ -3,12 +3,6 @@
 
 namespace catalog {
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-static std::optional<std::string> optText(Stmt& s, int col) {
-    if (s.isNull(col)) return std::nullopt;
-    return s.getText(col);
-}
-
 PhotoRecord PhotoRepository::rowToPhoto(Stmt& s) {
     PhotoRecord p;
     int c = 0;

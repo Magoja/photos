@@ -78,9 +78,7 @@ Renderer::~Renderer() { shutdown(); }
 void Renderer::beginFrame() {
     if (!impl_) return;
 
-    // Resize layer
-    int drawW = 0, drawH = 0;
-    // get SDL window from ImGui
+    // Resize layer to current display size
     ImGuiIO& io = ImGui::GetIO();
     impl_->layer.drawableSize = CGSizeMake(
         (CGFloat)io.DisplaySize.x * io.DisplayFramebufferScale.x,

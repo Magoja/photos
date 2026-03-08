@@ -4,6 +4,7 @@
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -65,10 +66,23 @@ std::vector<std::string> pickFiles(const std::vector<std::string>& extensions) {
     panel.allowsMultipleSelection = YES;
 
     if (!extensions.empty()) {
-        NSMutableArray* types = [NSMutableArray array];
-        for (auto& ext : extensions)
-            [types addObject:[NSString stringWithUTF8String:ext.c_str()]];
-        panel.allowedFileTypes = types;
+        if (@available(macOS 12.0, *)) {
+            NSMutableArray<UTType*>* types = [NSMutableArray array];
+            for (auto& ext : extensions) {
+                NSString* extStr = [NSString stringWithUTF8String:ext.c_str()];
+                UTType* ut = [UTType typeWithFilenameExtension:extStr];
+                if (ut) [types addObject:ut];
+            }
+            panel.allowedContentTypes = types;
+        } else {
+            NSMutableArray* types = [NSMutableArray array];
+            for (auto& ext : extensions)
+                [types addObject:[NSString stringWithUTF8String:ext.c_str()]];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            panel.allowedFileTypes = types;
+#pragma clang diagnostic pop
+        }
     }
 
     std::vector<std::string> result;

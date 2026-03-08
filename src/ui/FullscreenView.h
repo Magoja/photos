@@ -38,10 +38,9 @@ private:
     int                   currentIdx_ = 0;
     bool                  open_       = false;
 
-    float zoom_   = 1.f;
-    float panX_   = 0.f;
-    float panY_   = 0.f;
-    bool  panning_= false;
+    float zoom_ = 1.f;
+    float panX_ = 0.f;
+    float panY_ = 0.f;
 
     void navigate(int delta);
     void resetView();

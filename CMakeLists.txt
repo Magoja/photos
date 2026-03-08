@@ -35,6 +35,14 @@ find_library(FMT_LIBRARY     NAMES fmt              HINTS "${HB}/lib"     REQUIR
 
 # ── ImGui sources ─────────────────────────────────────────────────────────────
 set(IMGUI_DIR "${CMAKE_SOURCE_DIR}/third_party/imgui")
+
+# imgui_impl_metal.mm uses __bridge_transfer/__bridge_retained without ARC;
+# suppress the harmless "no effect without ARC" warning for that file only.
+set_source_files_properties(
+    ${IMGUI_DIR}/backends/imgui_impl_metal.mm
+    PROPERTIES COMPILE_OPTIONS "-Wno-arc-bridge-casts-disallowed-in-nonarc"
+)
+
 set(IMGUI_SOURCES
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_draw.cpp
@@ -123,6 +131,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     "-framework QuartzCore"
     "-framework DiskArbitration"
     "-framework IOKit"
+    "-framework UniformTypeIdentifiers"
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
