@@ -46,9 +46,16 @@ set(IMGUI_SOURCES
 )
 
 # ── Application sources ───────────────────────────────────────────────────────
+set(CATALOG_SOURCES
+    src/catalog/Database.cpp
+    src/catalog/Schema.cpp
+    src/catalog/PhotoRepository.cpp
+)
+
 set(APP_SOURCES
     src/main.mm
     ${IMGUI_SOURCES}
+    ${CATALOG_SOURCES}
 )
 
 add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${APP_SOURCES})

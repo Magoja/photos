@@ -54,7 +54,7 @@ ctest --preset debug --output-on-failure  # run tests
   Files: `CMakeLists.txt`, `CMakePresets.json`, `cmake/CompilerFlags.cmake`, `src/main.mm`, `.gitmodules`, `.gitignore`
   ✓ Verify: `cmake --preset debug && cmake --build build/debug` succeeds with 0 errors/warnings. Running the binary opens a window titled "Photo Library" that closes cleanly on Cmd+Q.
 
-- [ ] **Task 2 — Catalog database layer**
+- [x] **Task 2 — Catalog database layer**
   Files: `src/catalog/Database.h/.cpp`, `Schema.h/.cpp`, `PhotoRepository.h/.cpp`, `tests/test_database.cpp`
   ✓ Verify: `ctest --preset debug` passes all DB tests. `EXPLAIN QUERY PLAN` for folder query shows `USING INDEX idx_photos_folder`. Insert of duplicate (folder_id, filename) throws/returns error.
 
