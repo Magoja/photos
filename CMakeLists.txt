@@ -50,12 +50,46 @@ set(CATALOG_SOURCES
     src/catalog/Database.cpp
     src/catalog/Schema.cpp
     src/catalog/PhotoRepository.cpp
+    src/catalog/ThumbnailCache.cpp
+    src/catalog/BackupManager.cpp
+)
+
+set(IMPORT_SOURCES
+    src/import/VolumeWatcher.mm
+    src/import/FileScanner.cpp
+    src/import/RawDecoder.cpp
+    src/import/HashDedup.cpp
+    src/import/Importer.cpp
+)
+
+set(UI_SOURCES
+    src/ui/TextureManager.mm
+    src/ui/Renderer.mm
+    src/ui/GridView.cpp
+    src/ui/FolderTreePanel.cpp
+    src/ui/FilterBar.cpp
+    src/ui/FullscreenView.cpp
+    src/ui/ImportDialog.cpp
+    src/ui/ExportDialog.cpp
+)
+
+set(EXPORT_SOURCES
+    src/export/Exporter.cpp
+)
+
+set(UTIL_SOURCES
+    src/util/Platform.mm
+    src/util/ThreadPool.cpp
 )
 
 set(APP_SOURCES
     src/main.mm
     ${IMGUI_SOURCES}
     ${CATALOG_SOURCES}
+    ${IMPORT_SOURCES}
+    ${UI_SOURCES}
+    ${EXPORT_SOURCES}
+    ${UTIL_SOURCES}
 )
 
 add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${APP_SOURCES})

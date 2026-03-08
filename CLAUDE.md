@@ -58,46 +58,46 @@ ctest --preset debug --output-on-failure  # run tests
   Files: `src/catalog/Database.h/.cpp`, `Schema.h/.cpp`, `PhotoRepository.h/.cpp`, `tests/test_database.cpp`
   ✓ Verify: `ctest --preset debug` passes all DB tests. `EXPLAIN QUERY PLAN` for folder query shows `USING INDEX idx_photos_folder`. Insert of duplicate (folder_id, filename) throws/returns error.
 
-- [ ] **Task 3 — Volume/USB detection**
+- [x] **Task 3 — Volume/USB detection**
   Files: `src/import/VolumeWatcher.h/.mm`, `src/util/Platform.h/.mm`
   ✓ Verify: Plug in USB → spdlog console shows `Volume mounted uuid=X path=/Volumes/...` within 500 ms. Unplug → `Volume unmounted`. `volumes` table row created/updated.
 
-- [ ] **Task 4 — RAW decoding & EXIF extraction**
+- [x] **Task 4 — RAW decoding & EXIF extraction**
   Files: `src/import/RawDecoder.h/.cpp`, `ExifParser.h/.cpp`
   ✓ Verify: Unit test with a sample `.CR3` or `.ARW` file passes: thumbnail JPEG bytes non-empty and valid (libjpeg-turbo can decode them), `ExifData.cameraMake` non-empty, `captureTime` is valid ISO 8601.
 
-- [ ] **Task 5 — Thumbnail cache**
+- [x] **Task 5 — Thumbnail cache**
   Files: `src/catalog/ThumbnailCache.h/.cpp`
   ✓ Verify: Generate thumbnails for 50 RAW files. Files appear at `~/Library/Caches/PhotoLibrary/thumbs/{xx}/{hash}.jpg`. Each is ≤ 256×256 px and a valid JPEG. `photos.thumb_path` updated in DB.
 
-- [ ] **Task 6 — Hash dedup**
+- [x] **Task 6 — Hash dedup**
   Files: `src/import/HashDedup.h/.cpp`, `tests/test_hash_dedup.cpp`
   ✓ Verify: Tests pass: identical file → same hash on two calls; 1-byte changed file → different hash; `isDuplicate(db, hash)` returns photo_id for a hash already in DB, nullopt otherwise.
 
-- [ ] **Task 7 — Import pipeline**
+- [x] **Task 7 — Import pipeline**
   Files: `src/import/Importer.h/.cpp`, `FileScanner.h/.cpp`, `src/util/ThreadPool.h/.cpp`
   ✓ Verify: Import 200 mixed RAW+JPEG files. Duplicates (injected by copying one file twice) are skipped with log message. Target has `YYYY-MM-DD` subfolders from EXIF date. Progress callback fires per file. DB has all non-duplicate entries.
 
-- [ ] **Task 8 — Metal renderer & TextureManager**
+- [x] **Task 8 — Metal renderer & TextureManager**
   Files: `src/ui/Renderer.h/.mm`, `TextureManager.h/.cpp`
   ✓ Verify: 2000 placeholder textures render in a grid at ≥ 55 fps (use ImGui frame-time overlay). LRU evicts correctly at 2001st request. Textures created with `MTLStorageModeShared`.
 
-- [ ] **Task 9 — Grid view UI**
+- [x] **Task 9 — Grid view UI**
   Files: `src/ui/GridView.h/.cpp`, `FolderTreePanel.h/.cpp`, `FilterBar.h/.cpp`
   ✓ Verify: 10,000-photo catalog scrolls at ≥ 55 fps. Folder tree shows correct per-folder photo counts. Switching All↔Picked filter updates grid in one frame. Unavailable-volume photos show `?` badge.
 
-- [ ] **Task 10 — Import dialog UI**
+- [x] **Task 10 — Import dialog UI**
   Files: `src/ui/ImportDialog.h/.cpp`
   ✓ Verify: USB drive with 50 RAW files → preview grid loads all 50 thumbs within 10 s. Import → progress bar advances → dialog reports "50 new, 0 duplicates". Cancel button halts mid-import.
 
-- [ ] **Task 11 — Fullscreen view & pick toggle**
+- [x] **Task 11 — Fullscreen view & pick toggle**
   Files: `src/ui/FullscreenView.h/.cpp`
   ✓ Verify: `F` opens fullscreen; full-res RAW renders within 3 s (45 MP file). Left/Right arrows navigate. Backtick toggles picked; switching back to Grid with Picked filter shows the toggled photo. Scroll-wheel zooms, drag pans.
 
-- [ ] **Task 12 — Export pipeline**
+- [x] **Task 12 — Export pipeline**
   Files: `src/export/Exporter.h/.cpp`, `ExportPreset.h`, `src/ui/ExportDialog.h/.cpp`
   ✓ Verify: Select 20 RAW photos → "Medium Quality" export → 20 JPEG files on Desktop, each ≤ 2048px longest edge, JPEG quality ~75. Completes in < 60 s on M-series. Preset's `target_path` saved to DB.
 
-- [ ] **Task 13 — Weekly catalog backup**
+- [x] **Task 13 — Weekly catalog backup**
   Files: `src/catalog/BackupManager.h/.cpp`
   ✓ Verify: Set `app_settings.last_backup_time` = 8 days ago → launch app → `.db` backup appears in `~/Library/Application Support/PhotoLibrary/backups/` within 30 s. With 6 artificial backup rows, cleanup leaves exactly 5 files and 5 `backup_log` rows.

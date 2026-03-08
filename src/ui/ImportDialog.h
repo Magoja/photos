@@ -1,0 +1,46 @@
+#pragma once
+#include "import/VolumeWatcher.h"
+#include "import/Importer.h"
+#include "catalog/Database.h"
+#include <string>
+#include <memory>
+#include <functional>
+
+namespace ui {
+
+class ImportDialog {
+public:
+    using DoneCb = std::function<void()>;
+
+    ImportDialog(catalog::Database& db);
+
+    void setDoneCallback(DoneCb cb) { doneCb_ = std::move(cb); }
+
+    // Set source and destination paths to begin preview
+    void open(const std::string& sourcePath,
+              const std::string& destPath,
+              const std::string& thumbCacheRoot);
+    void close();
+    bool isOpen() const { return open_; }
+
+    void render();
+
+private:
+    catalog::Database&            db_;
+    DoneCb                        doneCb_;
+    bool                          open_  = false;
+
+    std::string                   sourcePath_;
+    std::string                   destPath_;
+    std::string                   thumbRoot_;
+
+    std::unique_ptr<import_ns::Importer> importer_;
+    import_ns::ImportStats                stats_;
+    int                                   totalFiles_ = 0;
+    int                                   doneFiles_  = 0;
+    std::string                           currentFile_;
+    bool                                  importing_  = false;
+    bool                                  finished_   = false;
+};
+
+} // namespace ui
