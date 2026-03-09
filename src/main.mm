@@ -262,7 +262,9 @@ int main(int /*argc*/, char** /*argv*/)
                     if (ImGui::MenuItem("Import...")) {
                         std::string dest = repo.getSetting("library_root");
                         if (dest.empty()) dest = util::appSupportDir() + "/library";
-                        importDlg.open("/Volumes", dest, thumbDir);
+                        std::string src  = repo.getSetting("library_root");
+                        if (src.empty()) src = util::appSupportDir() + "/library";
+                        importDlg.open(src, dest, thumbDir);
                     }
                     if (ImGui::MenuItem("Export Selected",
                                         nullptr, false,

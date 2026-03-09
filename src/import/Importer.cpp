@@ -88,22 +88,27 @@ void Importer::run() {
             // Decode RAW/JPEG
             auto dec = RawDecoder::decode(sf.path);
 
-            // Determine destination folder
-            std::string destDir = destForDate(dec.exif.captureTime);
-            fs::create_directories(destDir);
-
-            std::string destFile = destDir + "/" + fs::path(sf.path).filename().string();
-
-            // Copy/move file
+            // Determine destination file path
+            std::string destFile;
             if (opts_.copyFiles) {
-                std::error_code ec;
-                fs::copy_file(sf.path, destFile,
-                              fs::copy_options::skip_existing, ec);
-                if (ec) {
-                    spdlog::warn("Import: copy failed for {}: {}", sf.path, ec.message());
-                    ++stats_.errors;
-                    continue;
+                std::string destDir = destForDate(dec.exif.captureTime);
+                destFile = destDir + "/" + fs::path(sf.path).filename().string();
+
+                std::error_code eq_ec;
+                bool alreadyThere = fs::equivalent(sf.path, destFile, eq_ec) && !eq_ec;
+                if (!alreadyThere) {
+                    fs::create_directories(destDir);
+                    std::error_code cp_ec;
+                    fs::copy_file(sf.path, destFile,
+                                  fs::copy_options::skip_existing, cp_ec);
+                    if (cp_ec) {
+                        spdlog::warn("Import: copy failed for {}: {}", sf.path, cp_ec.message());
+                        ++stats_.errors;
+                        continue;
+                    }
                 }
+            } else {
+                destFile = sf.path;
             }
 
             // Upsert folder

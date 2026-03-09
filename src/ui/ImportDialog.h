@@ -26,6 +26,8 @@ public:
     void render();
 
 private:
+    void startImport();
+
     catalog::Database&            db_;
     DoneCb                        doneCb_;
     bool                          open_  = false;
@@ -33,6 +35,7 @@ private:
     std::string                   sourcePath_;
     std::string                   destPath_;
     std::string                   thumbRoot_;
+    bool                          copyFiles_ = true;
 
     std::unique_ptr<import_ns::Importer> importer_;
     import_ns::ImportStats                stats_;
