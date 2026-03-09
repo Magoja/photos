@@ -91,6 +91,11 @@ set(UTIL_SOURCES
     src/util/ThreadPool.cpp
 )
 
+set(APP_ICON "${CMAKE_SOURCE_DIR}/assets/PhotoLibrary.icns")
+set_source_files_properties(${APP_ICON} PROPERTIES
+    MACOSX_PACKAGE_LOCATION "Resources"
+)
+
 set(APP_SOURCES
     src/main.mm
     ${IMGUI_SOURCES}
@@ -99,6 +104,7 @@ set(APP_SOURCES
     ${UI_SOURCES}
     ${EXPORT_SOURCES}
     ${UTIL_SOURCES}
+    ${APP_ICON}
 )
 
 add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${APP_SOURCES})
@@ -154,6 +160,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.photolib.app"
     MACOSX_BUNDLE_BUNDLE_NAME    "Photo Library"
     MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+    MACOSX_BUNDLE_ICON_FILE      "PhotoLibrary.icns"
     XCODE_ATTRIBUTE_ARCHS        "arm64"
 )
 
