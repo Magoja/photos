@@ -5,6 +5,8 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <atomic>
+#include <mutex>
 
 namespace ui {
 
@@ -39,11 +41,12 @@ private:
 
     std::unique_ptr<import_ns::Importer> importer_;
     import_ns::ImportStats                stats_;
-    int                                   totalFiles_ = 0;
-    int                                   doneFiles_  = 0;
+    std::atomic<int>                      totalFiles_{0};
+    std::atomic<int>                      doneFiles_{0};
+    std::mutex                            progressMtx_;
     std::string                           currentFile_;
-    bool                                  importing_  = false;
-    bool                                  finished_   = false;
+    std::atomic<bool>                     importing_{false};
+    std::atomic<bool>                     finished_{false};
 };
 
 } // namespace ui

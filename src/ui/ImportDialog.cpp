@@ -24,6 +24,10 @@ void ImportDialog::open(const std::string& sourcePath,
     finished_   = false;
     doneFiles_  = 0;
     totalFiles_ = 0;
+    {
+        std::lock_guard lk(progressMtx_);
+        currentFile_.clear();
+    }
     importer_.reset();
 }
 
@@ -41,12 +45,16 @@ void ImportDialog::startImport() {
 
     importer_ = std::make_unique<import_ns::Importer>(db_, opts);
     importer_->setProgressCallback([this](int done, int total, const std::string& file) {
-        doneFiles_   = done;
-        totalFiles_  = total;
+        doneFiles_  = done;
+        totalFiles_ = total;
+        std::lock_guard lk(progressMtx_);
         currentFile_ = fs::path(file).filename().string();
     });
     importer_->setDoneCallback([this](const import_ns::ImportStats& s) {
-        stats_     = s;
+        {
+            std::lock_guard lk(progressMtx_);
+            stats_ = s;
+        }
         finished_  = true;
         importing_ = false;
         if (doneCb_) doneCb_();
@@ -109,11 +117,17 @@ void ImportDialog::render() {
         ImGui::SameLine();
         if (ImGui::Button("Cancel##pre")) close();
     } else if (importing_) {
-        float progress = totalFiles_ > 0
-            ? (float)doneFiles_ / totalFiles_ : 0.f;
-        ImGui::Text("Importing: %s", currentFile_.c_str());
+        int done  = doneFiles_;
+        int total = totalFiles_;
+        std::string curFile;
+        {
+            std::lock_guard lk(progressMtx_);
+            curFile = currentFile_;
+        }
+        float progress = total > 0 ? (float)done / total : 0.f;
+        ImGui::Text("Importing: %s", curFile.c_str());
         ImGui::ProgressBar(progress, {-1, 0});
-        ImGui::Text("%d / %d files", doneFiles_, totalFiles_);
+        ImGui::Text("%d / %d files", done, total);
         ImGui::Separator();
         if (ImGui::Button("Cancel##imp")) {
             importer_->cancel();
