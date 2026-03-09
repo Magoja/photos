@@ -4,6 +4,7 @@
 #include <cstring>
 #include <cstdio>
 #include <cmath>
+#include <memory>
 
 namespace import_ns {
 
@@ -50,10 +51,10 @@ static double gpsToDecimal(const float pos[3], const char ref) {
 DecodeResult RawDecoder::decode(const std::string& filePath)
 {
     DecodeResult result;
-    LibRaw raw;
+    auto raw = std::make_unique<LibRaw>();
 
     // Open
-    int rc = raw.open_file(filePath.c_str());
+    int rc = raw->open_file(filePath.c_str());
     if (rc != LIBRAW_SUCCESS) {
         result.error = libraw_strerror(rc);
         spdlog::warn("RawDecoder: open_file({}) failed: {}", filePath, result.error);
@@ -61,10 +62,10 @@ DecodeResult RawDecoder::decode(const std::string& filePath)
     }
 
     // ── EXIF ──────────────────────────────────────────────────────────────────
-    const libraw_iparams_t&  ip   = raw.imgdata.idata;
-    const libraw_imgother_t& io   = raw.imgdata.other;
-    const libraw_image_sizes_t& is = raw.imgdata.sizes;
-    const libraw_lensinfo_t& li  = raw.imgdata.lens;
+    const libraw_iparams_t&  ip   = raw->imgdata.idata;
+    const libraw_imgother_t& io   = raw->imgdata.other;
+    const libraw_image_sizes_t& is = raw->imgdata.sizes;
+    const libraw_lensinfo_t& li  = raw->imgdata.lens;
 
     ExifData& ex = result.exif;
     ex.cameraMake   = ip.make;
@@ -87,7 +88,7 @@ DecodeResult RawDecoder::decode(const std::string& filePath)
     ex.heightPx      = is.height > 0 ? is.height : is.raw_height;
 
     // GPS
-    const libraw_gps_info_t& gps = raw.imgdata.other.parsed_gps;
+    const libraw_gps_info_t& gps = raw->imgdata.other.parsed_gps;
     if (gps.gpsparsed) {
         ex.gpsLat  = gpsToDecimal(gps.latitude,  gps.latref);
         ex.gpsLon  = gpsToDecimal(gps.longitude, gps.longref);
@@ -95,9 +96,9 @@ DecodeResult RawDecoder::decode(const std::string& filePath)
     }
 
     // ── Thumbnail extraction ──────────────────────────────────────────────────
-    rc = raw.unpack_thumb();
+    rc = raw->unpack_thumb();
     if (rc == LIBRAW_SUCCESS) {
-        libraw_processed_image_t* thumb = raw.dcraw_make_mem_thumb(&rc);
+        libraw_processed_image_t* thumb = raw->dcraw_make_mem_thumb(&rc);
         if (thumb && rc == LIBRAW_SUCCESS) {
             if (thumb->type == LIBRAW_IMAGE_JPEG) {
                 result.thumbJpeg.assign(thumb->data, thumb->data + thumb->data_size);
@@ -108,13 +109,13 @@ DecodeResult RawDecoder::decode(const std::string& filePath)
 
     // If no embedded JPEG thumbnail, try dcraw_process for a small preview
     if (result.thumbJpeg.empty()) {
-        raw.imgdata.params.half_size       = 1;
-        raw.imgdata.params.use_camera_wb   = 1;
-        raw.imgdata.params.output_bps      = 8;
-        if (raw.unpack() == LIBRAW_SUCCESS &&
-            raw.dcraw_process() == LIBRAW_SUCCESS) {
+        raw->imgdata.params.half_size       = 1;
+        raw->imgdata.params.use_camera_wb   = 1;
+        raw->imgdata.params.output_bps      = 8;
+        if (raw->unpack() == LIBRAW_SUCCESS &&
+            raw->dcraw_process() == LIBRAW_SUCCESS) {
             int prc = 0;
-            libraw_processed_image_t* img = raw.dcraw_make_mem_image(&prc);
+            libraw_processed_image_t* img = raw->dcraw_make_mem_image(&prc);
             if (img && prc == LIBRAW_SUCCESS) {
                 // Convert raw RGB to minimal JPEG using libjpeg-turbo would be done
                 // in ThumbnailCache; here just store the raw bytes isn't ideal,
