@@ -204,7 +204,7 @@ int main(int /*argc*/, char** /*argv*/)
 
     // ── Render loop ───────────────────────────────────────────────────────────
     bool running = true;
-    static constexpr float kStatusH = 24.f;
+    static constexpr float kStatusH = 28.f;
 
     while (running) {
         SDL_Event event;
@@ -342,6 +342,13 @@ int main(int /*argc*/, char** /*argv*/)
             ImGui::PopStyleVar();
             ImGui::Text("Photos: %lld  |  FPS: %.0f",
                         (long long)grid.photoCount(), io.Framerate);
+            ImGui::SameLine();
+            float sliderW = 150.f;
+            ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - sliderW);
+            ImGui::SetNextItemWidth(sliderW);
+            float zoom = grid.thumbScale();
+            if (ImGui::SliderFloat("##zoom", &zoom, 0.5f, 3.0f, "Zoom %.1fx"))
+                grid.setThumbScale(zoom);
             ImGui::End();
 
             // ── Settings panel ────────────────────────────────────────────────

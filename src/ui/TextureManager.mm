@@ -133,6 +133,13 @@ void TextureManager::evict(int64_t photoId) {
     lruMap_.erase(it);
 }
 
+std::pair<int,int> TextureManager::getSize(int64_t photoId) const {
+    std::lock_guard lk(mutex_);
+    auto it = lruMap_.find(photoId);
+    if (it == lruMap_.end()) return {0, 0};
+    return {it->second.second.width, it->second.second.height};
+}
+
 void TextureManager::evictOldest() {
     if (lruList_.empty()) return;
     int64_t oldest = lruList_.back();

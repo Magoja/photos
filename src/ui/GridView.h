@@ -48,8 +48,14 @@ private:
     FilterMode            filter_     = FilterMode::All;
     int64_t               selectedId_ = 0;
 
-    static constexpr float kThumbSize    = 120.f;
-    static constexpr float kThumbPad     = 4.f;
+    static constexpr float kThumbBase   = 120.f;
+    static constexpr float kThumbPad    = 4.f;
+
+    float thumbScale_ = 1.f;
+
+public:
+    float thumbScale() const     { return thumbScale_; }
+    void  setThumbScale(float s) { thumbScale_ = s; }
 };
 
 } // namespace ui

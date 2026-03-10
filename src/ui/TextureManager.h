@@ -45,6 +45,9 @@ public:
     // Explicitly evict a photo's texture
     void evict(int64_t photoId);
 
+    // Returns stored pixel dimensions; {0,0} if not in cache
+    std::pair<int,int> getSize(int64_t photoId) const;
+
     MTLTexturePtr placeholder() const { return placeholder_; }
 
     size_t cacheSize() const { return lruMap_.size(); }
