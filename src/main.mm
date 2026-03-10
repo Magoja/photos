@@ -131,6 +131,8 @@ int main(int /*argc*/, char** /*argv*/)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
+    static std::string imguiIniPath = appSupport + "/imgui.ini";
+    io.IniFilename = imguiIniPath.c_str();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     ImGui::StyleColorsDark();
@@ -347,7 +349,7 @@ int main(int /*argc*/, char** /*argv*/)
             ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - sliderW);
             ImGui::SetNextItemWidth(sliderW);
             float zoom = grid.thumbScale();
-            if (ImGui::SliderFloat("##zoom", &zoom, 0.5f, 3.0f, "Zoom %.1fx"))
+            if (ImGui::SliderFloat("##zoom", &zoom, 0.5f, 3.0f, ""))
                 grid.setThumbScale(zoom);
             ImGui::End();
 
