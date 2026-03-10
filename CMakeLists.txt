@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(PhotoLibrary VERSION 0.1.0 LANGUAGES CXX OBJCXX)
+project(JakeutilPhotos VERSION 0.1.0 LANGUAGES CXX OBJCXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -92,7 +92,7 @@ set(UTIL_SOURCES
     src/util/ThreadPool.cpp
 )
 
-set(APP_ICON "${CMAKE_SOURCE_DIR}/assets/PhotoLibrary.icns")
+set(APP_ICON "${CMAKE_SOURCE_DIR}/assets/JakeutilPhotos.icns")
 set_source_files_properties(${APP_ICON} PROPERTIES
     MACOSX_PACKAGE_LOCATION "Resources"
 )
@@ -161,7 +161,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.jakeutil.photos"
     MACOSX_BUNDLE_BUNDLE_NAME    "Jakeutil Photos"
     MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
-    MACOSX_BUNDLE_ICON_FILE      "PhotoLibrary.icns"
+    MACOSX_BUNDLE_ICON_FILE      "JakeutilPhotos.icns"
     XCODE_ATTRIBUTE_ARCHS        "arm64"
 )
 
