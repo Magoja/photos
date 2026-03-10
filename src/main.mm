@@ -1,4 +1,4 @@
-// main.mm — Photo Library entry point
+// main.mm — Jakeutil Photos entry point
 // Metal + SDL2 + ImGui application shell
 
 #import <Cocoa/Cocoa.h>
@@ -73,7 +73,7 @@ int main(int /*argc*/, char** /*argv*/)
     auto logger = spdlog::stdout_color_mt("console");
     spdlog::set_default_logger(logger);
     spdlog::set_level(spdlog::level::info);
-    spdlog::info("Photo Library starting");
+    spdlog::info("Jakeutil Photos starting");
 
     // ── Platform dirs ─────────────────────────────────────────────────────────
     std::string appSupport = util::appSupportDir();
@@ -108,7 +108,7 @@ int main(int /*argc*/, char** /*argv*/)
 
     const int W = 1280, H = 800;
     SDL_Window* window = SDL_CreateWindow(
-        "Photo Library",
+        "Jakeutil Photos",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         W, H,
         SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_METAL);
