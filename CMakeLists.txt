@@ -158,7 +158,7 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 
 # ── macOS bundle settings ─────────────────────────────────────────────────────
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    MACOSX_BUNDLE_GUI_IDENTIFIER "com.photolib.app"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "com.jakeutil.photos"
     MACOSX_BUNDLE_BUNDLE_NAME    "Photo Library"
     MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
     MACOSX_BUNDLE_ICON_FILE      "PhotoLibrary.icns"

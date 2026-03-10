@@ -21,7 +21,7 @@ static std::string librarySubdir(NSSearchPathDirectory dir, const std::string& s
     NSString* base = paths.firstObject;
     if (!base) return "";
     NSString* full = [base stringByAppendingPathComponent:
-                      [NSString stringWithUTF8String:("PhotoLibrary/" + sub).c_str()]];
+                      [NSString stringWithUTF8String:("com.jakeutil.photos/" + sub).c_str()]];
     std::string result = nsStringToStd(full);
     ensureDir(result);
     return result;
@@ -36,7 +36,7 @@ std::string appSupportDir() {
 }
 
 std::string logsDir() {
-    return librarySubdir(NSLibraryDirectory, "Logs/PhotoLibrary");
+    return librarySubdir(NSLibraryDirectory, "Logs/com.jakeutil.photos");
 }
 
 std::string desktopDir() {
