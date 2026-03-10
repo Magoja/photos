@@ -86,8 +86,18 @@ public:
     std::string getSetting(const std::string& key, const std::string& def = "");
     void        setSetting(const std::string& key, const std::string& value);
 
+    // ── Library root ─────────────────────────────────────────────────────────
+    void        setLibraryRoot(const std::string& root);
+    std::string libraryRoot() const { return libraryRoot_; }
+    std::string fullPathFor(int64_t folderId, const std::string& filename);
+    bool        libraryRootExists() const;
+
+    // ── Direct DB access (for components that need raw queries) ───────────────
+    Database& db() { return db_; }
+
 private:
-    Database& db_;
+    Database&   db_;
+    std::string libraryRoot_;
     PhotoRecord rowToPhoto(Stmt& s);
 };
 

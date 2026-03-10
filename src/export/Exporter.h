@@ -15,7 +15,7 @@ using DoneCb     = std::function<void(int exported, int errors)>;
 
 class Exporter {
 public:
-    Exporter(catalog::Database& db, const ExportPreset& preset);
+    Exporter(catalog::PhotoRepository& repo, const ExportPreset& preset);
     ~Exporter();
 
     void setProgressCallback(ProgressCb cb) { progressCb_ = std::move(cb); }
@@ -26,8 +26,8 @@ public:
     bool isRunning() const { return running_; }
 
 private:
-    catalog::Database& db_;
-    ExportPreset       preset_;
+    catalog::PhotoRepository& repo_;
+    ExportPreset              preset_;
     ProgressCb         progressCb_;
     DoneCb             doneCb_;
     std::atomic<bool>  running_   {false};

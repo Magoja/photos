@@ -111,16 +111,15 @@ void Importer::run() {
                 destFile = sf.path;
             }
 
-            // Upsert folder
-            std::string folderPath = fs::path(destFile).parent_path().string();
-            std::string folderName = fs::path(destFile).parent_path().filename().string();
+            // Upsert folder — store relative path (just the date subfolder name)
+            std::string folderRel  = fs::path(destFile).parent_path().filename().string();
 
             int64_t fid;
             {
                 std::lock_guard lk(db_.mutex());
                 FolderRecord folder;
-                folder.path = folderPath;
-                folder.name = folderName;
+                folder.path = folderRel;
+                folder.name = folderRel;
                 fid = repo.upsertFolder(folder);
             }
 

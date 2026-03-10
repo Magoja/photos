@@ -100,6 +100,14 @@ void GridView::render() {
                 dl->AddRect(cellPos, {cellPos.x + cellW, cellPos.y + cellH},
                             IM_COL32(255, 200, 50, 255), 0.f, 0, 2.f);
 
+            // ? badge when library root is missing
+            if (!repo_.libraryRootExists()) {
+                ImVec2 badgePos = {cellPos.x + cellW - 18.f, cellPos.y + 2.f};
+                dl->AddRectFilled(badgePos, {badgePos.x + 16.f, badgePos.y + 16.f},
+                                  IM_COL32(180, 40, 40, 220), 2.f);
+                dl->AddText(badgePos, IM_COL32(255, 255, 255, 255), "?");
+            }
+
             if (clicked) {
                 selectedId_ = pid;
                 if (onSelectCb_) onSelectCb_(pid);

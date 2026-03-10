@@ -7,13 +7,13 @@ namespace fs = std::filesystem;
 
 namespace ui {
 
-ExportDialog::ExportDialog(catalog::Database& db) : db_(db) {
+ExportDialog::ExportDialog(catalog::PhotoRepository& repo) : repo_(repo) {
     loadPresets();
 }
 
 void ExportDialog::loadPresets() {
     presets_.clear();
-    auto s = db_.prepare(
+    auto s = repo_.db().prepare(
         "SELECT id,name,quality,max_width,max_height,target_path,config_json"
         " FROM export_presets ORDER BY id");
     while (s.step()) {
@@ -79,13 +79,13 @@ void ExportDialog::render() {
             if (!presets_.empty()) {
                 auto& preset = presets_[selectedPreset_];
                 // Save target_path to DB
-                auto s = db_.prepare(
+                auto s = repo_.db().prepare(
                     "UPDATE export_presets SET target_path=? WHERE id=?");
                 s.bind(1, preset.targetPath);
                 s.bind(2, preset.id);
                 s.step();
 
-                exporter_ = std::make_unique<export_ns::Exporter>(db_, preset);
+                exporter_ = std::make_unique<export_ns::Exporter>(repo_, preset);
                 exporter_->setProgressCallback([this](int done, int total) {
                     doneCount_  = done;
                     totalCount_ = total;

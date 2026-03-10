@@ -12,8 +12,8 @@ using namespace catalog;
 
 namespace export_ns {
 
-Exporter::Exporter(Database& db, const ExportPreset& preset)
-    : db_(db), preset_(preset) {}
+Exporter::Exporter(PhotoRepository& repo, const ExportPreset& preset)
+    : repo_(repo), preset_(preset) {}
 
 Exporter::~Exporter() {
     cancel();
@@ -76,16 +76,8 @@ static std::vector<uint8_t> resizeJpeg(const std::vector<uint8_t>& src,
 
 bool Exporter::exportOne(const PhotoRecord& rec, const std::string& destDir)
 {
-    // Find source file: folder path + filename
-    PhotoRepository repo(db_);
-    auto folder = repo.findFolder(""); // We need folder path
-    // Get folder path from DB
-    auto s = db_.prepare("SELECT path FROM folders WHERE id=?");
-    s.bind(1, rec.folderId);
-    std::string folderPath;
-    if (s.step()) folderPath = s.getText(0);
-
-    std::string srcPath = folderPath + "/" + rec.filename;
+    // Build source path using repository's library root + relative folder
+    std::string srcPath = repo_.fullPathFor(rec.folderId, rec.filename);
 
     // Decode
     auto dec = import_ns::RawDecoder::decode(srcPath);
@@ -114,14 +106,13 @@ bool Exporter::exportOne(const PhotoRecord& rec, const std::string& destDir)
 
 void Exporter::run(std::vector<int64_t> ids) {
     fs::create_directories(preset_.targetPath);
-    PhotoRepository repo(db_);
 
     int exported = 0, errors = 0;
     for (int i = 0; i < (int)ids.size(); ++i) {
         if (cancelled_) break;
         if (progressCb_) progressCb_(i, (int)ids.size());
 
-        auto rec = repo.findById(ids[i]);
+        auto rec = repo_.findById(ids[i]);
         if (!rec) { ++errors; continue; }
 
         if (exportOne(*rec, preset_.targetPath)) ++exported;

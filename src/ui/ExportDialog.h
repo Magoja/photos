@@ -11,7 +11,7 @@ namespace ui {
 
 class ExportDialog {
 public:
-    ExportDialog(catalog::Database& db);
+    ExportDialog(catalog::PhotoRepository& repo);
 
     void open(const std::vector<int64_t>& selectedIds);
     void close();
@@ -20,7 +20,7 @@ public:
     void render();
 
 private:
-    catalog::Database&   db_;
+    catalog::PhotoRepository& repo_;
     bool                 open_     = false;
     bool                 exporting_= false;
     bool                 finished_ = false;

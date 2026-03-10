@@ -17,8 +17,6 @@ private:
     catalog::PhotoRepository& repo_;
     std::string               dbPath_;
     bool                      open_ = false;
-    char                      libraryRoot_[1024]   = {};
-    char                      thumbCacheDir_[1024] = {};
 };
 
 } // namespace ui

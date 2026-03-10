@@ -111,7 +111,7 @@ INSERT OR IGNORE INTO export_presets (name, quality, max_width, max_height)
     VALUES ('Low / Web',      60, 1024, 1024);
 )SQL";
 
-void Schema::apply(Database& db) {
+void Schema::apply(Database& db, const std::string& libraryRoot) {
     // Create tables
     db.exec(kDDL);
 
@@ -123,6 +123,16 @@ void Schema::apply(Database& db) {
         db.exec(kSeedPresets);
         db.exec("INSERT OR IGNORE INTO schema_version(version) VALUES (1)");
         spdlog::info("Schema v1 applied");
+    }
+
+    if (ver < 2 && !libraryRoot.empty()) {
+        // Migrate absolute folder paths to relative (strip library root prefix)
+        size_t stripLen = libraryRoot.size() + 2; // +1 for '/', +1 for SUBSTR 1-based offset
+        db.exec("UPDATE folders SET path = SUBSTR(path, " +
+                std::to_string(stripLen) +
+                ") WHERE path LIKE '" + libraryRoot + "/%'");
+        db.exec("INSERT OR IGNORE INTO schema_version(version) VALUES (2)");
+        spdlog::info("Schema v2 applied: migrated folder paths to relative");
     }
 
     spdlog::debug("Schema version: {}", ver < 1 ? 1 : (int)ver);

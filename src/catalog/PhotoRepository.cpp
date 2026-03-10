@@ -1,5 +1,6 @@
 #include "PhotoRepository.h"
 #include <spdlog/spdlog.h>
+#include <filesystem>
 
 namespace catalog {
 
@@ -253,6 +254,24 @@ void PhotoRepository::setSetting(const std::string& key, const std::string& valu
     s.bind(1, key);
     s.bind(2, value);
     s.step();
+}
+
+// ── Library root ──────────────────────────────────────────────────────────────
+void PhotoRepository::setLibraryRoot(const std::string& root) {
+    libraryRoot_ = root;
+}
+
+std::string PhotoRepository::fullPathFor(int64_t folderId, const std::string& filename) {
+    auto s = db_.prepare("SELECT path FROM folders WHERE id=?");
+    s.bind(1, folderId);
+    std::string folderRel;
+    if (s.step()) folderRel = s.getText(0);
+    if (libraryRoot_.empty()) return folderRel + "/" + filename;
+    return libraryRoot_ + "/" + folderRel + "/" + filename;
+}
+
+bool PhotoRepository::libraryRootExists() const {
+    return !libraryRoot_.empty() && std::filesystem::exists(libraryRoot_);
 }
 
 } // namespace catalog

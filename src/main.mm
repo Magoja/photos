@@ -82,14 +82,20 @@ int main(int /*argc*/, char** /*argv*/)
     std::string backupDir  = appSupport + "/backups";
     std::string dbPath     = appSupport + "/catalog.db";
     util::ensureDir(appSupport);
-    util::ensureDir(cacheDir);
-    util::ensureDir(thumbDir);
     util::ensureDir(backupDir);
 
     // ── Database ──────────────────────────────────────────────────────────────
-    catalog::Database       db(dbPath);
-    catalog::Schema::apply(db);
+    catalog::Database        db(dbPath);
     catalog::PhotoRepository repo(db);
+
+    // Load library root before schema migration so v2 can strip the prefix
+    std::string libraryRoot = repo.getSetting("library_root");
+    catalog::Schema::apply(db, libraryRoot);
+    repo.setLibraryRoot(libraryRoot);
+
+    // Migrate old thumb_path entries that used the old app bundle identifier
+    db.exec("UPDATE photos SET thumb_path = REPLACE(thumb_path, '/PhotoLibrary/', "
+            "'/com.jakeutil.photos/') WHERE thumb_path LIKE '%/PhotoLibrary/%'");
     catalog::ThumbnailCache  thumbCache(thumbDir);
     catalog::BackupManager   backupMgr(db, dbPath, backupDir);
 
@@ -149,7 +155,7 @@ int main(int /*argc*/, char** /*argv*/)
     ui::FilterBar        filterBar;
     ui::FullscreenView   fullscreen(repo, texMgr);
     ui::ImportDialog     importDlg(db);
-    ui::ExportDialog     exportDlg(db);
+    ui::ExportDialog     exportDlg(repo);
     ui::SettingsPanel    settingsPanel(repo, dbPath);
 
     // ── Async thumbnail loader ─────────────────────────────────────────────────
@@ -262,11 +268,7 @@ int main(int /*argc*/, char** /*argv*/)
             if (ImGui::BeginMainMenuBar()) {
                 if (ImGui::BeginMenu("File")) {
                     if (ImGui::MenuItem("Import...")) {
-                        std::string dest = repo.getSetting("library_root");
-                        if (dest.empty()) dest = util::appSupportDir() + "/library";
-                        std::string src  = repo.getSetting("library_root");
-                        if (src.empty()) src = util::appSupportDir() + "/library";
-                        importDlg.open(src, dest, thumbDir);
+                        importDlg.open("", libraryRoot, thumbDir);
                     }
                     if (ImGui::MenuItem("Export Selected",
                                         nullptr, false,
@@ -297,6 +299,24 @@ int main(int /*argc*/, char** /*argv*/)
                     ImGui::EndMenu();
                 }
                 ImGui::EndMainMenuBar();
+            }
+
+            // ── First-launch modal: ask user to choose library root ───────────
+            if (libraryRoot.empty()) ImGui::OpenPopup("Choose Library Folder");
+            if (ImGui::BeginPopupModal("Choose Library Folder", nullptr,
+                                        ImGuiWindowFlags_AlwaysAutoResize)) {
+                ImGui::Text("Choose a folder where Jakeutil Photos will store your images.");
+                ImGui::Spacing();
+                if (ImGui::Button("Browse...")) {
+                    if (auto p = util::pickFolder()) {
+                        libraryRoot = *p;
+                        util::ensureDir(libraryRoot);
+                        repo.setSetting("library_root", libraryRoot);
+                        repo.setLibraryRoot(libraryRoot);
+                    }
+                }
+                if (!libraryRoot.empty()) ImGui::CloseCurrentPopup();
+                ImGui::EndPopup();
             }
 
             // ── DockSpace (leave room for status bar at bottom) ───────────────
