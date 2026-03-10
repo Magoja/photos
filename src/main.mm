@@ -25,6 +25,7 @@
 // Import
 #include "import/VolumeWatcher.h"
 #include "import/Importer.h"
+#include "import/RawDecoder.h"
 
 // UI
 #include "ui/TextureManager.h"
@@ -165,11 +166,44 @@ int main(int /*argc*/, char** /*argv*/)
     util::ThreadPool         thumbPool(2);
 
     grid.setThumbMissCallback([&](int64_t pid, std::string path) {
-        if (path.empty()) return;
-        thumbPool.submit([pid, path=std::move(path), &thumbMtx, &thumbResQ]() {
-            std::ifstream f(path, std::ios::binary);
-            if (!f) return;
-            std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)), {});
+        thumbPool.submit([pid, path=std::move(path),
+                          &thumbMtx, &thumbResQ, &repo, &thumbCache, &db]() {
+            // Fast path: cached file exists on disk
+            if (!path.empty()) {
+                std::ifstream f(path, std::ios::binary);
+                if (f) {
+                    std::vector<uint8_t> bytes(
+                        (std::istreambuf_iterator<char>(f)), {});
+                    if (!bytes.empty()) {
+                        std::lock_guard lk(thumbMtx);
+                        thumbResQ.push({pid, std::move(bytes)});
+                        return;
+                    }
+                }
+            }
+            // Slow path: cache file missing — decode source and regenerate
+            auto rec = [&]() -> std::optional<catalog::PhotoRecord> {
+                std::lock_guard lk(db.mutex());
+                return repo.findById(pid);
+            }();
+            if (!rec) return;
+
+            std::string srcPath = repo.fullPathFor(rec->folderId, rec->filename);
+            auto dec = import_ns::RawDecoder::decode(srcPath);
+            if (!dec.ok || dec.thumbJpeg.empty()) return;
+
+            {
+                std::lock_guard lk(db.mutex());
+                thumbCache.generate(pid, rec->fileHash, dec.thumbJpeg, repo);
+            }
+
+            // Now serve the freshly written file
+            std::string newPath = repo.getThumbPath(pid);
+            if (newPath.empty()) return;
+            std::ifstream f2(newPath, std::ios::binary);
+            if (!f2) return;
+            std::vector<uint8_t> bytes(
+                (std::istreambuf_iterator<char>(f2)), {});
             if (!bytes.empty()) {
                 std::lock_guard lk(thumbMtx);
                 thumbResQ.push({pid, std::move(bytes)});
