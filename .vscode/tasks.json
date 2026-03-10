@@ -1,0 +1,21 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cmake: build debug",
+      "type": "shell",
+      "command": "cmake --build build/debug",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "cmake: build release",
+      "type": "shell",
+      "command": "cmake --build build/release",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": ["$gcc"]
+    }
+  ]
+}

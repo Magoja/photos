@@ -1,0 +1,30 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Build",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/debug/JakeutilPhotos.app/Contents/MacOS/JakeutilPhotos",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "MIMode": "lldb",
+      "preLaunchTask": "cmake: build debug",
+      "presentation": { "order": 1 }
+    },
+    {
+      "name": "Release Run",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/release/JakeutilPhotos.app/Contents/MacOS/JakeutilPhotos",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "MIMode": "lldb",
+      "noDebug": true,
+      "preLaunchTask": "cmake: build release",
+      "presentation": { "order": 2 }
+    }
+  ]
+}
