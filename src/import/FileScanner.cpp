@@ -1,6 +1,7 @@
 #include "FileScanner.h"
 #include <filesystem>
 #include <algorithm>
+#include <ranges>
 #include <cctype>
 
 namespace fs = std::filesystem;
@@ -16,13 +17,15 @@ const std::vector<std::string>& FileScanner::supportedExtensions() {
     return exts;
 }
 
+static std::string toLower(std::string s) {
+    std::ranges::transform(s, s.begin(), [](unsigned char c){ return std::tolower(c); });
+    return s;
+}
+
 bool FileScanner::isSupported(const std::string& ext) {
-    std::string lower = ext;
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](unsigned char c){ return std::tolower(c); });
-    for (auto& e : supportedExtensions())
-        if (e == lower) return true;
-    return false;
+    const auto lower = toLower(ext);
+    return std::ranges::any_of(supportedExtensions(),
+                               [&](const std::string& e){ return e == lower; });
 }
 
 std::vector<ScannedFile> FileScanner::scan(

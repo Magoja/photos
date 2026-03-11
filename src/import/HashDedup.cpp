@@ -2,40 +2,43 @@
 #include "catalog/Database.h"
 #include <xxhash.h>
 #include <spdlog/spdlog.h>
-#include <fstream>
+#include <format>
 #include <vector>
 #include <cstdio>
-#include <cstring>
 
 namespace import_ns {
 
 static constexpr size_t kChunkSize = 64 * 1024; // 64 KB
+
+static int64_t fileSize(FILE* f) {
+    std::fseek(f, 0, SEEK_END);
+    int64_t sz = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+    return sz;
+}
+
+static size_t readChunk(FILE* f, std::vector<uint8_t>& buf, long offset = 0) {
+    if (offset) std::fseek(f, offset, SEEK_END);
+    return std::fread(buf.data(), 1, kChunkSize, f);
+}
 
 uint64_t HashDedup::fastFingerprint(const std::string& path)
 {
     FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) return 0;
 
-    // Get file size
-    std::fseek(f, 0, SEEK_END);
-    int64_t size = std::ftell(f);
-    std::fseek(f, 0, SEEK_SET);
-
     XXH3_state_t* state = XXH3_createState();
     XXH3_64bits_reset(state);
 
-    // Hash file size
-    XXH3_64bits_update(state, &size, sizeof(size));
+    int64_t sz = fileSize(f);
+    XXH3_64bits_update(state, &sz, sizeof(sz));
 
-    // Hash first chunk
     std::vector<uint8_t> buf(kChunkSize);
-    size_t n = std::fread(buf.data(), 1, kChunkSize, f);
+    size_t n = readChunk(f, buf);
     XXH3_64bits_update(state, buf.data(), n);
 
-    // Hash last chunk (if file is bigger than 2 chunks)
-    if (size > static_cast<int64_t>(kChunkSize * 2)) {
-        std::fseek(f, -static_cast<long>(kChunkSize), SEEK_END);
-        n = std::fread(buf.data(), 1, kChunkSize, f);
+    if (sz > static_cast<int64_t>(kChunkSize * 2)) {
+        n = readChunk(f, buf, -static_cast<long>(kChunkSize));
         XXH3_64bits_update(state, buf.data(), n);
     }
 
@@ -61,13 +64,7 @@ std::string HashDedup::fullHash(const std::string& path)
     std::fclose(f);
     XXH128_hash_t h = XXH3_128bits_digest(state);
     XXH3_freeState(state);
-
-    char hex[33];
-    std::snprintf(hex, sizeof(hex),
-                  "%016llx%016llx",
-                  (unsigned long long)h.high64,
-                  (unsigned long long)h.low64);
-    return hex;
+    return std::format("{:016x}{:016x}", h.high64, h.low64);
 }
 
 std::optional<int64_t> HashDedup::isDuplicate(catalog::Database& db,

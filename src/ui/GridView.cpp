@@ -1,6 +1,5 @@
 #include "GridView.h"
 #include "imgui.h"
-#include <cstdio>
 #include <algorithm>
 
 namespace ui {
@@ -16,10 +15,9 @@ void GridView::loadFolder(int64_t folderId, FilterMode filter) {
 
 void GridView::reload() {
     bool pickedOnly = (filter_ == FilterMode::Picked);
-    if (folderId_ == 0)
-        photoIds_ = repo_.queryAll(pickedOnly);
-    else
-        photoIds_ = repo_.queryByFolder(folderId_, pickedOnly);
+    photoIds_ = (folderId_ == 0)
+                ? repo_.queryAll(pickedOnly)
+                : repo_.queryByFolder(folderId_, pickedOnly);
     requested_.clear();
 }
 
@@ -27,27 +25,45 @@ void GridView::onThumbReady(int64_t photoId, const std::vector<uint8_t>& jpegByt
     texMgr_.upload(photoId, jpegBytes);
 }
 
+// ── Layout helpers ────────────────────────────────────────────────────────────
+
+static std::pair<int,int> computeVisibleRowRange(int totalRows,
+                                                  float rowH,
+                                                  float scrollY,
+                                                  float viewH)
+{
+    int first = std::max(0, static_cast<int>(scrollY / rowH) - 1);
+    int last  = std::min(totalRows, static_cast<int>((scrollY + viewH) / rowH) + 2);
+    return {first, last};
+}
+
+static std::pair<float,float> computeLetterboxSize(int tw, int th,
+                                                    float thumbW, float thumbH)
+{
+    if (tw <= 0 || th <= 0) return {thumbW, thumbH};
+    float aspect     = (float)tw / (float)th;
+    float cellAspect = thumbW / thumbH;
+    if (aspect > cellAspect) return { thumbW, thumbW / aspect };
+    return { thumbH * aspect, thumbH };
+}
+
+// ── render ────────────────────────────────────────────────────────────────────
+
 void GridView::render() {
     float thumbW = kThumbBase * thumbScale_;
-    float thumbH = thumbW * (4.f / 6.f);   // 6:4 aspect cell
+    float thumbH = thumbW * (4.f / 6.f);
     float cellW  = thumbW + kThumbPad * 2.f;
     float cellH  = thumbH + kThumbPad * 2.f;
 
     float panelW = ImGui::GetContentRegionAvail().x;
     int   cols   = std::max(1, static_cast<int>(panelW / cellW));
-
-    // Virtual scroll: determine visible row range
-    float rowH      = cellH;
-    float scrollY   = ImGui::GetScrollY();
-    float viewH     = ImGui::GetWindowHeight();
     int   totalRows = (static_cast<int>(photoIds_.size()) + cols - 1) / cols;
-    int   firstRow  = std::max(0, static_cast<int>(scrollY / rowH) - 1);
-    int   lastRow   = std::min(totalRows, static_cast<int>((scrollY + viewH) / rowH) + 2);
 
-    // Skip rows above viewport
-    if (firstRow > 0) {
-        ImGui::Dummy({panelW, firstRow * rowH});
-    }
+    auto [firstRow, lastRow] = computeVisibleRowRange(
+        totalRows, cellH, ImGui::GetScrollY(), ImGui::GetWindowHeight());
+
+    if (firstRow > 0)
+        ImGui::Dummy({panelW, firstRow * cellH});
 
     for (int row = firstRow; row < lastRow; ++row) {
         for (int col = 0; col < cols; ++col) {
@@ -57,24 +73,14 @@ void GridView::render() {
             int64_t pid = photoIds_[idx];
             void*   tex = texMgr_.get(pid);
 
-            // Request async thumb load on first miss
             if (tex == texMgr_.placeholder() && thumbMissCb_ && !requested_.count(pid)) {
                 requested_.insert(pid);
                 thumbMissCb_(pid, repo_.getThumbPath(pid));
             }
-            bool sel = (pid == selectedId_);
 
-            // Compute letterbox draw rect
-            float imgW, imgH;
+            bool sel = (pid == selectedId_);
             auto [tw, th] = texMgr_.getSize(pid);
-            if (tw > 0 && th > 0) {
-                float aspect     = (float)tw / (float)th;
-                float cellAspect = thumbW / thumbH;
-                if (aspect > cellAspect) { imgW = thumbW; imgH = thumbW / aspect; }
-                else                     { imgH = thumbH; imgW = thumbH * aspect; }
-            } else {
-                imgW = thumbW; imgH = thumbH;  // placeholder: fill cell
-            }
+            auto [imgW, imgH] = computeLetterboxSize(tw, th, thumbW, thumbH);
 
             if (col > 0) ImGui::SameLine();
             ImVec2 cellPos = ImGui::GetCursorScreenPos();
@@ -84,23 +90,19 @@ void GridView::render() {
 
             ImDrawList* dl = ImGui::GetWindowDrawList();
 
-            // Cell background
             ImU32 bgCol = sel ? IM_COL32(80, 60, 10, 255) : IM_COL32(35, 35, 35, 255);
             dl->AddRectFilled(cellPos, {cellPos.x + cellW, cellPos.y + cellH}, bgCol);
 
-            // Image, centered within cell
             float offX = (thumbW - imgW) * 0.5f + kThumbPad;
             float offY = (thumbH - imgH) * 0.5f + kThumbPad;
             ImVec2 imgMin = {cellPos.x + offX, cellPos.y + offY};
             ImVec2 imgMax = {imgMin.x + imgW,  imgMin.y + imgH};
             dl->AddImage(reinterpret_cast<ImTextureID>(tex), imgMin, imgMax);
 
-            // Selection border
             if (sel)
                 dl->AddRect(cellPos, {cellPos.x + cellW, cellPos.y + cellH},
                             IM_COL32(255, 200, 50, 255), 0.f, 0, 2.f);
 
-            // ? badge when library root is missing
             if (!repo_.libraryRootExists()) {
                 ImVec2 badgePos = {cellPos.x + cellW - 18.f, cellPos.y + 2.f};
                 dl->AddRectFilled(badgePos, {badgePos.x + 16.f, badgePos.y + 16.f},
@@ -112,7 +114,6 @@ void GridView::render() {
                 selectedId_ = pid;
                 if (onSelectCb_) onSelectCb_(pid);
             }
-            // Double-click → open fullscreen
             if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
                 selectedId_ = pid;
                 if (onSelectCb_) onSelectCb_(pid);
@@ -122,11 +123,9 @@ void GridView::render() {
         }
     }
 
-    // Reserve space for rows below viewport
     int remainRows = totalRows - lastRow;
-    if (remainRows > 0) {
-        ImGui::Dummy({panelW, remainRows * rowH});
-    }
+    if (remainRows > 0)
+        ImGui::Dummy({panelW, remainRows * cellH});
 }
 
 } // namespace ui

@@ -1,6 +1,9 @@
 #include "FolderTreePanel.h"
 #include "imgui.h"
 #include <map>
+#include <ranges>
+#include <algorithm>
+#include <span>
 #include <cstdio>
 
 namespace ui {
@@ -19,6 +22,15 @@ void FolderTreePanel::refresh() {
     }
 }
 
+// ── Tree rendering helper ─────────────────────────────────────────────────────
+
+static std::map<int64_t, std::vector<catalog::FolderRecord>>
+groupByParent(std::span<const catalog::FolderRecord> folders) {
+    std::map<int64_t, std::vector<catalog::FolderRecord>> byParent;
+    for (auto& f : folders) byParent[f.parentId].push_back(f);
+    return byParent;
+}
+
 void FolderTreePanel::renderFolderChildren(
     int64_t parentId,
     const std::map<int64_t, std::vector<catalog::FolderRecord>>& byParent,
@@ -30,8 +42,7 @@ void FolderTreePanel::renderFolderChildren(
     for (auto& f : it->second) {
         bool hasChildren = byParent.count(f.id) > 0;
         int64_t cnt = 0;
-        auto ci = counts.find(f.id);
-        if (ci != counts.end()) cnt = ci->second;
+        if (auto ci = counts.find(f.id); ci != counts.end()) cnt = ci->second;
 
         char label[512];
         std::snprintf(label, sizeof(label), "%s  (%lld)##f%lld",
@@ -62,8 +73,9 @@ void FolderTreePanel::renderFolderChildren(
     }
 }
 
+// ── render ────────────────────────────────────────────────────────────────────
+
 void FolderTreePanel::render() {
-    // "All Photos" entry
     char allLabel[64];
     std::snprintf(allLabel, sizeof(allLabel), "All Photos  (%lld)", (long long)totalCount_);
     ImGuiTreeNodeFlags allFlags = ImGuiTreeNodeFlags_Leaf |
@@ -79,17 +91,14 @@ void FolderTreePanel::render() {
     ImGui::Separator();
 
     if (volumes_.empty()) {
-        // No volumes: flat tree of all folders grouped by parent
-        std::map<int64_t, std::vector<catalog::FolderRecord>> byParent;
-        for (auto& f : folders_) byParent[f.parentId].push_back(f);
+        auto byParent = groupByParent(folders_);
         renderFolderChildren(0, byParent, counts_);
     } else {
         for (auto& vol : volumes_) {
             auto volFolders = repo_.listFolders(vol.id);
             if (volFolders.empty()) continue;
 
-            std::map<int64_t, std::vector<catalog::FolderRecord>> vByParent;
-            for (auto& f : volFolders) vByParent[f.parentId].push_back(f);
+            auto vByParent = groupByParent(volFolders);
 
             char volLabel[256];
             std::snprintf(volLabel, sizeof(volLabel), "[Disk] %s##v%lld",
@@ -103,14 +112,11 @@ void FolderTreePanel::render() {
             }
         }
 
-        // Orphan folders (no volume association)
         std::vector<catalog::FolderRecord> orphans;
-        for (auto& f : folders_) {
-            if (f.volumeId == 0) orphans.push_back(f);
-        }
+        std::ranges::copy_if(folders_, std::back_inserter(orphans),
+                             [](const catalog::FolderRecord& f){ return f.volumeId == 0; });
         if (!orphans.empty()) {
-            std::map<int64_t, std::vector<catalog::FolderRecord>> oByParent;
-            for (auto& f : orphans) oByParent[f.parentId].push_back(f);
+            auto oByParent = groupByParent(orphans);
             if (ImGui::TreeNodeEx("Library##orphans",
                     ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DefaultOpen)) {
                 renderFolderChildren(0, oByParent, counts_);

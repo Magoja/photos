@@ -1,6 +1,7 @@
 #include "BackupManager.h"
 #include <spdlog/spdlog.h>
 #include <filesystem>
+#include <span>
 #include <ctime>
 #include <cstdio>
 #include <cstring>
@@ -8,6 +9,29 @@
 namespace fs = std::filesystem;
 
 namespace catalog {
+
+// ── Timestamp helpers ─────────────────────────────────────────────────────────
+
+static time_t parseIsoDateTime(const std::string& s) {
+    struct tm t {};
+    int y, mo, d, h, mi, sec;
+    if (std::sscanf(s.c_str(), "%d-%d-%dT%d:%d:%d", &y, &mo, &d, &h, &mi, &sec) < 3)
+        return 0;
+    t.tm_year = y - 1900; t.tm_mon = mo - 1; t.tm_mday = d;
+    t.tm_hour = h; t.tm_min = mi; t.tm_sec = sec;
+    t.tm_isdst = -1;
+    return std::mktime(&t);
+}
+
+static std::string currentUtcStamp(const char* fmt) {
+    time_t now = std::time(nullptr);
+    struct tm* t = std::gmtime(&now);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), fmt, t);
+    return buf;
+}
+
+// ── BackupManager ─────────────────────────────────────────────────────────────
 
 BackupManager::BackupManager(Database& db,
                               const std::string& dbPath,
@@ -22,35 +46,19 @@ bool BackupManager::isBackupDue() const {
     std::string lastStr = repo.getSetting("last_backup_time", "");
     if (lastStr.empty()) return true;
 
-    // Parse ISO 8601 "YYYY-MM-DDTHH:MM:SS"
-    struct tm t {};
-    int y,mo,d,h,mi,s;
-    if (std::sscanf(lastStr.c_str(), "%d-%d-%dT%d:%d:%d",
-                    &y,&mo,&d,&h,&mi,&s) < 3) return true;
-    t.tm_year = y - 1900;
-    t.tm_mon  = mo - 1;
-    t.tm_mday = d;
-    t.tm_hour = h; t.tm_min = mi; t.tm_sec = s;
-    t.tm_isdst = -1;
-    time_t last = std::mktime(&t);
-    time_t now  = std::time(nullptr);
-    double days = std::difftime(now, last) / 86400.0;
+    time_t last = parseIsoDateTime(lastStr);
+    if (!last) return true;
+
+    double days = std::difftime(std::time(nullptr), last) / 86400.0;
     return days >= kBackupIntervalDays;
 }
 
 std::string BackupManager::doBackup() {
-    // Timestamp for filename
-    time_t now = std::time(nullptr);
-    struct tm* t = std::gmtime(&now);
-    char stamp[32];
-    std::strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", t);
+    std::string destPath = backupDir_ + "/catalog_" +
+                           currentUtcStamp("%Y%m%d_%H%M%S") + ".db";
 
-    std::string destPath = backupDir_ + "/catalog_" + stamp + ".db";
-
-    // Use SQLite backup API for safe hot backup
     sqlite3* dest = nullptr;
-    int rc = sqlite3_open(destPath.c_str(), &dest);
-    if (rc != SQLITE_OK) {
+    if (sqlite3_open(destPath.c_str(), &dest) != SQLITE_OK) {
         spdlog::error("BackupManager: cannot open dest {}", destPath);
         return "";
     }
@@ -62,7 +70,7 @@ std::string BackupManager::doBackup() {
         return "";
     }
 
-    sqlite3_backup_step(bk, -1);  // copy all pages
+    sqlite3_backup_step(bk, -1);
     sqlite3_backup_finish(bk);
     sqlite3_close(dest);
 
@@ -79,19 +87,11 @@ void BackupManager::recordBackup(const std::string& path, int64_t sizeBytes) {
         s.bind(2, sizeBytes);
         s.step();
     }
-
-    // Update last_backup_time
-    char stamp[32];
-    time_t now = std::time(nullptr);
-    struct tm* t = std::gmtime(&now);
-    std::strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H:%M:%S", t);
-
     PhotoRepository repo(db_);
-    repo.setSetting("last_backup_time", stamp);
+    repo.setSetting("last_backup_time", currentUtcStamp("%Y-%m-%dT%H:%M:%S"));
 }
 
 void BackupManager::rotate() {
-    // Get all backup entries sorted oldest first
     auto s = db_.prepare(
         "SELECT id, backup_path FROM backup_log ORDER BY created_at ASC");
 
@@ -100,20 +100,15 @@ void BackupManager::rotate() {
     while (s.step())
         entries.push_back({ s.getInt64(0), s.getText(1) });
 
-    // Delete oldest beyond kMaxBackups
-    int excess = (int)entries.size() - kMaxBackups;
-    for (int i = 0; i < excess; ++i) {
-        // Delete file
+    int excessCount = static_cast<int>(entries.size()) - kMaxBackups;
+    for (auto& [id, path] : std::span(entries).first(std::max(0, excessCount))) {
         std::error_code ec;
-        fs::remove(entries[i].path, ec);
-
-        // Delete DB row
+        fs::remove(path, ec);
         std::lock_guard lk(db_.mutex());
         auto d = db_.prepare("DELETE FROM backup_log WHERE id=?");
-        d.bind(1, entries[i].id);
+        d.bind(1, id);
         d.step();
-
-        spdlog::debug("BackupManager: rotated out {}", entries[i].path);
+        spdlog::debug("BackupManager: rotated out {}", path);
     }
 }
 

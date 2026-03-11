@@ -4,7 +4,6 @@
 #include <spdlog/spdlog.h>
 #include <filesystem>
 #include <fstream>
-#include <cstring>
 #include <algorithm>
 
 namespace fs = std::filesystem;
@@ -29,7 +28,17 @@ void Exporter::start(const std::vector<int64_t>& photoIds) {
 
 void Exporter::cancel() { cancelled_ = true; }
 
-// Resize & recompress a JPEG buffer
+// ── JPEG resize helpers ───────────────────────────────────────────────────────
+
+static std::pair<int,int> computeScaledSize(int w, int h, int maxW, int maxH) {
+    if (maxW <= 0 && maxH <= 0) return {w, h};
+    int limit = (maxW > 0 && maxH > 0) ? std::max(maxW, maxH)
+                                        : (maxW > 0 ? maxW : maxH);
+    if (w <= limit && h <= limit) return {w, h};
+    if (w > h) return { limit, std::max(1, (int)((double)h / w * limit)) };
+    return { std::max(1, (int)((double)w / h * limit)), limit };
+}
+
 static std::vector<uint8_t> resizeJpeg(const std::vector<uint8_t>& src,
                                         int maxW, int maxH, int quality)
 {
@@ -42,18 +51,7 @@ static std::vector<uint8_t> resizeJpeg(const std::vector<uint8_t>& src,
         tjDestroy(tj); return {};
     }
 
-    int tw = w, th = h;
-    if (maxW > 0 || maxH > 0) {
-        int limit = std::max(maxW > 0 ? maxW : INT_MAX,
-                             maxH > 0 ? maxH : INT_MAX);
-        // Use min(maxW,maxH) as longest-edge limit
-        limit = maxW > 0 && maxH > 0 ? std::max(maxW, maxH) : (maxW > 0 ? maxW : maxH);
-        if (w > limit || h > limit) {
-            if (w > h) { tw = limit; th = (int)((double)h / w * limit); }
-            else       { th = limit; tw = (int)((double)w / h * limit); }
-        }
-    }
-    if (tw < 1) tw = 1; if (th < 1) th = 1;
+    auto [tw, th] = computeScaledSize(w, h, maxW, maxH);
 
     std::vector<uint8_t> rgb(tw * th * 3);
     if (tjDecompress2(tj, src.data(), (unsigned long)src.size(),
@@ -74,19 +72,18 @@ static std::vector<uint8_t> resizeJpeg(const std::vector<uint8_t>& src,
     return result;
 }
 
+// ── Exporter ──────────────────────────────────────────────────────────────────
+
 bool Exporter::exportOne(const PhotoRecord& rec, const std::string& destDir)
 {
-    // Build source path using repository's library root + relative folder
     std::string srcPath = repo_.fullPathFor(rec.folderId, rec.filename);
 
-    // Decode
     auto dec = import_ns::RawDecoder::decode(srcPath);
     if (!dec.ok || dec.thumbJpeg.empty()) {
         spdlog::warn("Export: decode failed for {}", srcPath);
         return false;
     }
 
-    // Resize
     auto outJpeg = resizeJpeg(dec.thumbJpeg,
         preset_.maxWidth, preset_.maxHeight, preset_.quality);
     if (outJpeg.empty()) {
@@ -94,7 +91,6 @@ bool Exporter::exportOne(const PhotoRecord& rec, const std::string& destDir)
         return false;
     }
 
-    // Destination
     fs::path destPath = fs::path(destDir) /
         (fs::path(rec.filename).stem().string() + ".jpg");
     std::ofstream ofs(destPath, std::ios::binary);
@@ -108,9 +104,9 @@ void Exporter::run(std::vector<int64_t> ids) {
     fs::create_directories(preset_.targetPath);
 
     int exported = 0, errors = 0;
-    for (int i = 0; i < (int)ids.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(ids.size()); ++i) {
         if (cancelled_) break;
-        if (progressCb_) progressCb_(i, (int)ids.size());
+        if (progressCb_) progressCb_(i, static_cast<int>(ids.size()));
 
         auto rec = repo_.findById(ids[i]);
         if (!rec) { ++errors; continue; }

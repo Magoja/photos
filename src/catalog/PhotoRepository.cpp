@@ -4,6 +4,36 @@
 
 namespace catalog {
 
+// ── Row-mapping helpers ───────────────────────────────────────────────────────
+
+static VolumeRecord rowToVolume(Stmt& s) {
+    VolumeRecord v;
+    v.id        = s.getInt64(0);
+    v.uuid      = s.getText(1);
+    v.label     = s.getText(2);
+    v.mountPath = s.getText(3);
+    v.lastSeen  = s.getText(4);
+    return v;
+}
+
+static FolderRecord rowToFolder(Stmt& s) {
+    FolderRecord f;
+    f.id       = s.getInt64(0);
+    f.parentId = s.getInt64(1);
+    f.volumeId = s.getInt64(2);
+    f.path     = s.getText(3);
+    f.name     = s.getText(4);
+    return f;
+}
+
+static std::vector<int64_t> collectIds(Stmt& s) {
+    std::vector<int64_t> ids;
+    while (s.step()) ids.push_back(s.getInt64(0));
+    return ids;
+}
+
+// ── PhotoRepository ───────────────────────────────────────────────────────────
+
 PhotoRecord PhotoRepository::rowToPhoto(Stmt& s) {
     PhotoRecord p;
     int c = 0;
@@ -38,6 +68,7 @@ PhotoRecord PhotoRepository::rowToPhoto(Stmt& s) {
 }
 
 // ── Volumes ───────────────────────────────────────────────────────────────────
+
 int64_t PhotoRepository::upsertVolume(const VolumeRecord& v) {
     auto s = db_.prepare(
         "INSERT INTO volumes(uuid,label,mount_path,last_seen) VALUES(?,?,?,datetime('now'))"
@@ -48,7 +79,6 @@ int64_t PhotoRepository::upsertVolume(const VolumeRecord& v) {
     s.bind(2, v.label);
     s.bind(3, v.mountPath);
     if (s.step()) return s.getInt64(0);
-    // Fallback: query id
     auto q = db_.prepare("SELECT id FROM volumes WHERE uuid=?");
     q.bind(1, v.uuid);
     if (q.step()) return q.getInt64(0);
@@ -56,17 +86,9 @@ int64_t PhotoRepository::upsertVolume(const VolumeRecord& v) {
 }
 
 std::vector<VolumeRecord> PhotoRepository::listVolumes() {
-    std::vector<VolumeRecord> out;
     auto s = db_.prepare("SELECT id,uuid,label,mount_path,last_seen FROM volumes ORDER BY label");
-    while (s.step()) {
-        VolumeRecord v;
-        v.id        = s.getInt64(0);
-        v.uuid      = s.getText(1);
-        v.label     = s.getText(2);
-        v.mountPath = s.getText(3);
-        v.lastSeen  = s.getText(4);
-        out.push_back(v);
-    }
+    std::vector<VolumeRecord> out;
+    while (s.step()) out.push_back(rowToVolume(s));
     return out;
 }
 
@@ -74,16 +96,14 @@ std::optional<VolumeRecord> PhotoRepository::findVolume(const std::string& uuid)
     auto s = db_.prepare("SELECT id,uuid,label,mount_path,last_seen FROM volumes WHERE uuid=?");
     s.bind(1, uuid);
     if (!s.step()) return std::nullopt;
-    VolumeRecord v;
-    v.id        = s.getInt64(0);
-    v.uuid      = s.getText(1);
-    v.label     = s.getText(2);
-    v.mountPath = s.getText(3);
-    v.lastSeen  = s.getText(4);
-    return v;
+    return rowToVolume(s);
 }
 
 // ── Folders ───────────────────────────────────────────────────────────────────
+
+static constexpr std::string_view kFolderSelect =
+    "SELECT id,COALESCE(parent_id,0),COALESCE(volume_id,0),path,name FROM folders";
+
 int64_t PhotoRepository::upsertFolder(const FolderRecord& f) {
     auto s = db_.prepare(
         "INSERT INTO folders(parent_id,volume_id,path,name) VALUES(?,?,?,?)"
@@ -102,37 +122,19 @@ int64_t PhotoRepository::upsertFolder(const FolderRecord& f) {
 }
 
 std::optional<FolderRecord> PhotoRepository::findFolder(const std::string& path) {
-    auto s = db_.prepare(
-        "SELECT id,COALESCE(parent_id,0),COALESCE(volume_id,0),path,name"
-        " FROM folders WHERE path=?");
+    auto s = db_.prepare(std::string(kFolderSelect) + " WHERE path=?");
     s.bind(1, path);
     if (!s.step()) return std::nullopt;
-    FolderRecord f;
-    f.id       = s.getInt64(0);
-    f.parentId = s.getInt64(1);
-    f.volumeId = s.getInt64(2);
-    f.path     = s.getText(3);
-    f.name     = s.getText(4);
-    return f;
+    return rowToFolder(s);
 }
 
 std::vector<FolderRecord> PhotoRepository::listFolders(int64_t volumeId) {
-    std::vector<FolderRecord> out;
     Stmt s = volumeId
-        ? db_.prepare("SELECT id,COALESCE(parent_id,0),COALESCE(volume_id,0),path,name"
-                      " FROM folders WHERE volume_id=? ORDER BY path")
-        : db_.prepare("SELECT id,COALESCE(parent_id,0),COALESCE(volume_id,0),path,name"
-                      " FROM folders ORDER BY path");
+        ? db_.prepare(std::string(kFolderSelect) + " WHERE volume_id=? ORDER BY path")
+        : db_.prepare(std::string(kFolderSelect) + " ORDER BY path");
     if (volumeId) s.bind(1, volumeId);
-    while (s.step()) {
-        FolderRecord f;
-        f.id       = s.getInt64(0);
-        f.parentId = s.getInt64(1);
-        f.volumeId = s.getInt64(2);
-        f.path     = s.getText(3);
-        f.name     = s.getText(4);
-        out.push_back(f);
-    }
+    std::vector<FolderRecord> out;
+    while (s.step()) out.push_back(rowToFolder(s));
     return out;
 }
 
@@ -144,6 +146,7 @@ int64_t PhotoRepository::folderPhotoCount(int64_t folderId) {
 }
 
 // ── Photos ────────────────────────────────────────────────────────────────────
+
 int64_t PhotoRepository::insertPhoto(const PhotoRecord& p) {
     static const std::string sql =
         "INSERT INTO photos("
@@ -167,8 +170,7 @@ int64_t PhotoRepository::insertPhoto(const PhotoRecord& p) {
     if (p.widthPx)  s.bind(13, p.widthPx);  else s.bindNull(13);
     if (p.heightPx) s.bind(14, p.heightPx); else s.bindNull(14);
     s.bind(15, p.editSettings.empty() ? "{}" : p.editSettings);
-
-    s.step(); // DONE (not ROW)
+    s.step();
     return db_.lastInsertRowid();
 }
 
@@ -203,22 +205,18 @@ std::optional<int64_t> PhotoRepository::findByHash(const std::string& hash) {
 }
 
 std::vector<int64_t> PhotoRepository::queryByFolder(int64_t folderId, bool pickedOnly) {
-    std::vector<int64_t> ids;
     Stmt s = pickedOnly
         ? db_.prepare("SELECT id FROM photos WHERE folder_id=? AND picked=1 ORDER BY COALESCE(capture_time,import_time)")
         : db_.prepare("SELECT id FROM photos WHERE folder_id=? ORDER BY COALESCE(capture_time,import_time)");
     s.bind(1, folderId);
-    while (s.step()) ids.push_back(s.getInt64(0));
-    return ids;
+    return collectIds(s);
 }
 
 std::vector<int64_t> PhotoRepository::queryAll(bool pickedOnly) {
-    std::vector<int64_t> ids;
     Stmt s = pickedOnly
         ? db_.prepare("SELECT id FROM photos WHERE picked=1 ORDER BY COALESCE(capture_time,import_time)")
         : db_.prepare("SELECT id FROM photos ORDER BY COALESCE(capture_time,import_time)");
-    while (s.step()) ids.push_back(s.getInt64(0));
-    return ids;
+    return collectIds(s);
 }
 
 void PhotoRepository::updatePicked(int64_t id, int picked) {
@@ -240,6 +238,7 @@ void PhotoRepository::updateThumb(int64_t id, const std::string& path, int w, in
 }
 
 // ── App settings ──────────────────────────────────────────────────────────────
+
 std::string PhotoRepository::getSetting(const std::string& key, const std::string& def) {
     auto s = db_.prepare("SELECT value FROM app_settings WHERE key=?");
     s.bind(1, key);
@@ -257,6 +256,7 @@ void PhotoRepository::setSetting(const std::string& key, const std::string& valu
 }
 
 // ── Library root ──────────────────────────────────────────────────────────────
+
 void PhotoRepository::setLibraryRoot(const std::string& root) {
     libraryRoot_ = root;
 }

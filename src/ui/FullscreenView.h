@@ -1,6 +1,7 @@
 #pragma once
 #include "TextureManager.h"
 #include "catalog/PhotoRepository.h"
+#include "imgui.h"
 #include <vector>
 #include <cstdint>
 #include <functional>
@@ -50,6 +51,13 @@ private:
 
     void navigate(int delta);
     void resetView();
+
+    void handleNavKeys();
+    void handleZoomAndPan(const ImGuiIO& io);
+    void drawBackground(ImDrawList* dl, ImVec2 scrSz) const;
+    void drawPhoto(ImDrawList* dl, ImVec2 scrSz) const;
+    void drawStatusOverlay(ImDrawList* dl, ImVec2 scrSz) const;
+    void tickToast(ImDrawList* dl, ImVec2 scrSz, float dt);
 };
 
 } // namespace ui

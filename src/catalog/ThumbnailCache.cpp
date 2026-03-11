@@ -3,7 +3,6 @@
 #include <spdlog/spdlog.h>
 #include <filesystem>
 #include <fstream>
-#include <cstring>
 
 namespace fs = std::filesystem;
 
@@ -17,8 +16,7 @@ ThumbnailCache::ThumbnailCache(const std::string& cacheRoot)
 
 std::string ThumbnailCache::pathFor(const std::string& hash) const {
     if (hash.size() < 2) return root_ + "/00/" + hash + ".jpg";
-    std::string dir = root_ + "/" + hash.substr(0, 2);
-    return dir + "/" + hash + ".jpg";
+    return root_ + "/" + hash.substr(0, 2) + "/" + hash + ".jpg";
 }
 
 std::string ThumbnailCache::lookup(const std::string& hash) const {
@@ -26,7 +24,25 @@ std::string ThumbnailCache::lookup(const std::string& hash) const {
     return fs::exists(p) ? p : "";
 }
 
-// ── resize JPEG using libjpeg-turbo ──────────────────────────────────────────
+// ── libjpeg-turbo helpers ─────────────────────────────────────────────────────
+
+static std::pair<int,int> scaleDimensions(int w, int h, int maxDim) {
+    if (w <= maxDim && h <= maxDim) return {w, h};
+    if (w > h) return { maxDim, std::max(1, (int)((double)h / w * maxDim)) };
+    return { std::max(1, (int)((double)w / h * maxDim)), maxDim };
+}
+
+static std::pair<int,int> readJpegDimensions(const std::vector<uint8_t>& jpeg) {
+    tjhandle tj = tjInitDecompress();
+    if (!tj) return {0, 0};
+    int w = 0, h = 0, s = 0, cs = 0;
+    tjDecompressHeader3(tj, jpeg.data(), (unsigned long)jpeg.size(), &w, &h, &s, &cs);
+    tjDestroy(tj);
+    return {w, h};
+}
+
+// ── ThumbnailCache ────────────────────────────────────────────────────────────
+
 std::vector<uint8_t> ThumbnailCache::resizeJpeg(const std::vector<uint8_t>& src,
                                                   int maxDim)
 {
@@ -40,16 +56,8 @@ std::vector<uint8_t> ThumbnailCache::resizeJpeg(const std::vector<uint8_t>& src,
         return src;
     }
 
-    // Compute scaled dimensions preserving aspect ratio
-    int tw = w, th = h;
-    if (w > maxDim || h > maxDim) {
-        if (w > h) { tw = maxDim; th = (int)((double)h / w * maxDim); }
-        else       { th = maxDim; tw = (int)((double)w / h * maxDim); }
-        if (tw < 1) tw = 1;
-        if (th < 1) th = 1;
-    }
+    auto [tw, th] = scaleDimensions(w, h, maxDim);
 
-    // Decompress to RGB
     std::vector<uint8_t> rgb(tw * th * 3);
     if (tjDecompress2(tj, src.data(), (unsigned long)src.size(),
                       rgb.data(), tw, 0, th, TJPF_RGB, TJFLAG_FASTDCT) < 0) {
@@ -58,7 +66,6 @@ std::vector<uint8_t> ThumbnailCache::resizeJpeg(const std::vector<uint8_t>& src,
     }
     tjDestroy(tj);
 
-    // Recompress
     tjhandle tjc = tjInitCompress();
     if (!tjc) return src;
 
@@ -81,9 +88,7 @@ std::string ThumbnailCache::store(const std::string& hash,
 {
     if (hash.empty() || jpegBytes.empty()) return "";
 
-    // Resize if needed
     auto thumbData = resizeJpeg(jpegBytes, kMaxDim);
-
     auto p = pathFor(hash);
     fs::create_directories(fs::path(p).parent_path());
 
@@ -104,7 +109,6 @@ bool ThumbnailCache::generate(int64_t photoId,
 {
     if (thumbJpeg.empty()) return false;
 
-    // Check cache
     auto existing = lookup(hash);
     if (!existing.empty()) {
         repo.updateThumb(photoId, existing, kMaxDim, kMaxDim, 0);
@@ -114,16 +118,10 @@ bool ThumbnailCache::generate(int64_t photoId,
     auto path = store(hash, thumbJpeg);
     if (path.empty()) return false;
 
-    // Get actual dimensions
-    tjhandle tj = tjInitDecompress();
-    int w = kMaxDim, h = kMaxDim, s = 0, cs = 0;
-    if (tj) {
-        auto scaled = resizeJpeg(thumbJpeg, kMaxDim);
-        tjDecompressHeader3(tj,
-            scaled.data(), (unsigned long)scaled.size(),
-            &w, &h, &s, &cs);
-        tjDestroy(tj);
-    }
+    auto scaled = resizeJpeg(thumbJpeg, kMaxDim);
+    auto [w, h] = readJpegDimensions(scaled);
+    if (w == 0) w = kMaxDim;
+    if (h == 0) h = kMaxDim;
 
     repo.updateThumb(photoId, path, w, h,
                      (int64_t)std::filesystem::last_write_time(path)
