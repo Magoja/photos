@@ -10,7 +10,7 @@ FullscreenView::FullscreenView(catalog::PhotoRepository& repo, TextureManager& t
 void FullscreenView::setPhotoList(std::vector<int64_t> ids, int64_t currentId) {
   photoIds_ = std::move(ids);
   currentId_ = currentId;
-  auto it = std::ranges::find(photoIds_, currentId);
+  const auto it = std::ranges::find(photoIds_, currentId);
   currentIdx_ = (it != photoIds_.end()) ? static_cast<int>(it - photoIds_.begin()) : 0;
 }
 
@@ -89,21 +89,21 @@ void FullscreenView::drawBackground(ImDrawList* dl, ImVec2 scrSz) const {
 }
 
 void FullscreenView::drawPhoto(ImDrawList* dl, ImVec2 scrSz) const {
-  void* tex = texMgr_.get(currentId_);
-  float imgW = scrSz.x * zoom_;
-  float imgH = scrSz.y * zoom_;
-  float x = (scrSz.x - imgW) * 0.5f + panX_;
-  float y = (scrSz.y - imgH) * 0.5f + panY_;
+  const auto tex = texMgr_.get(currentId_);
+  const float imgW = scrSz.x * zoom_;
+  const float imgH = scrSz.y * zoom_;
+  const float x = (scrSz.x - imgW) * 0.5f + panX_;
+  const float y = (scrSz.y - imgH) * 0.5f + panY_;
   dl->AddImage(reinterpret_cast<ImTextureID>(tex), {x, y}, {x + imgW, y + imgH});
 }
 
 void FullscreenView::drawStatusOverlay(ImDrawList* dl, ImVec2 scrSz) const {
-  auto rec = repo_.findById(currentId_);
+  const auto rec = repo_.findById(currentId_);
   if (!rec) {
     return;
   }
-  ImFont* font = ImGui::GetFont();
-  float fs = ImGui::GetFontSize();
+  ImFont* const font = ImGui::GetFont();
+  const float fs = ImGui::GetFontSize();
   char info[256];
   std::snprintf(info, sizeof(info), "%s  |  %dx%d  |  %s  |  %s  [%d/%d]", rec->filename.c_str(),
                 rec->widthPx, rec->heightPx, rec->captureTime.c_str(),
@@ -118,16 +118,17 @@ void FullscreenView::tickToast(ImDrawList* dl, ImVec2 scrSz, float dt) {
     return;
   }
 
-  float alpha = std::min(1.f, toastTimeLeft_ / 0.4f);
-  ImU32 textCol = IM_COL32(255, 255, 255, int(alpha * 255));
-  ImU32 bgCol = IM_COL32(0, 0, 0, int(alpha * 0.6f * 255));
-  ImFont* font = ImGui::GetFont();
-  float fs = ImGui::GetFontSize();
+  const float alpha = std::min(1.f, toastTimeLeft_ / 0.4f);
+  const ImU32 textCol = IM_COL32(255, 255, 255, int(alpha * 255));
+  const ImU32 bgCol = IM_COL32(0, 0, 0, int(alpha * 0.6f * 255));
+  ImFont* const font = ImGui::GetFont();
+  const float fs = ImGui::GetFontSize();
 
-  ImVec2 textSz = ImGui::CalcTextSize(toastText_.c_str());
-  float bw = textSz.x + 40.f, bh = textSz.y + 20.f;
-  float bx = (scrSz.x - bw) * 0.5f;
-  float by = scrSz.y * 0.35f - bh * 0.5f;
+  const ImVec2 textSz = ImGui::CalcTextSize(toastText_.c_str());
+  const float bw = textSz.x + 40.f;
+  const float bh = textSz.y + 20.f;
+  const float bx = (scrSz.x - bw) * 0.5f;
+  const float by = scrSz.y * 0.35f - bh * 0.5f;
 
   dl->AddRectFilled({bx, by}, {bx + bw, by + bh}, bgCol, 8.f);
   dl->AddText(font, fs, {bx + 20.f, by + 10.f}, textCol, toastText_.c_str());
@@ -140,8 +141,8 @@ void FullscreenView::render() {
     return;
   }
 
-  ImGuiIO& io = ImGui::GetIO();
-  ImVec2 scrSz = io.DisplaySize;
+  const ImGuiIO& io = ImGui::GetIO();
+  const ImVec2 scrSz = io.DisplaySize;
 
   ImGui::SetNextWindowPos({0, 0});
   ImGui::SetNextWindowSize(scrSz);
@@ -156,7 +157,7 @@ void FullscreenView::render() {
 
   ImGui::End();
 
-  ImDrawList* dl = ImGui::GetForegroundDrawList();
+  ImDrawList* const dl = ImGui::GetForegroundDrawList();
   drawBackground(dl, scrSz);
   drawPhoto(dl, scrSz);
   drawStatusOverlay(dl, scrSz);
