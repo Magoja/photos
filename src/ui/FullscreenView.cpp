@@ -2,6 +2,7 @@
 #include "imgui.h"
 #include <algorithm>
 #include <cstdio>
+#include <cmath>
 
 namespace ui {
 
@@ -43,6 +44,7 @@ void FullscreenView::render() {
     ImGui::SetNextWindowPos({0, 0});
     ImGui::SetNextWindowSize(scrSz);
     ImGui::SetNextWindowBgAlpha(0.95f);
+    ImGui::SetNextWindowFocus();   // bring to front of Z stack every frame
     ImGui::Begin("##fullscreen", nullptr,
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoScrollbar  | ImGuiWindowFlags_NoScrollWithMouse |
@@ -66,6 +68,9 @@ void FullscreenView::render() {
                 int newPicked = rec->picked ? 0 : 1;
                 repo_.updatePicked(currentId_, newPicked);
                 if (pickChangedCb_) pickChangedCb_(currentId_, newPicked);
+                toastText_     = newPicked ? "Picked" : "Unpicked";
+                toastVisible_  = true;
+                toastTimeLeft_ = 1.2f;
             }
         }
     }
@@ -106,6 +111,31 @@ void FullscreenView::render() {
                       currentIdx_ + 1, (int)photoIds_.size());
         ImGui::SetCursorPos({10, scrSz.y - 30});
         ImGui::TextUnformatted(info);
+    }
+
+    // Toast notification
+    if (toastVisible_) {
+        toastTimeLeft_ -= io.DeltaTime;
+        if (toastTimeLeft_ <= 0.f) {
+            toastVisible_ = false;
+        } else {
+            // Fade: alpha goes 1→0 over last 0.4s
+            float alpha = std::min(1.f, toastTimeLeft_ / 0.4f);
+            ImVec4 col  = {1.f, 1.f, 1.f, alpha};
+
+            ImVec2 textSz = ImGui::CalcTextSize(toastText_.c_str());
+            float bw = textSz.x + 40.f, bh = textSz.y + 20.f;
+            float bx = (scrSz.x - bw) * 0.5f;
+            float by = scrSz.y * 0.35f - bh * 0.5f;
+
+            ImDrawList* tdl = ImGui::GetWindowDrawList();
+            tdl->AddRectFilled({bx, by}, {bx + bw, by + bh},
+                               ImGui::ColorConvertFloat4ToU32({0.f, 0.f, 0.f, alpha * 0.6f}), 8.f);
+            ImGui::SetCursorPos({bx + 20.f, by + 10.f});
+            ImGui::PushStyleColor(ImGuiCol_Text, col);
+            ImGui::TextUnformatted(toastText_.c_str());
+            ImGui::PopStyleColor();
+        }
     }
 
     ImGui::End();

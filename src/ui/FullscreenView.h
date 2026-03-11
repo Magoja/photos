@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <functional>
+#include <string>
 
 namespace ui {
 
@@ -41,6 +42,11 @@ private:
     float zoom_ = 1.f;
     float panX_ = 0.f;
     float panY_ = 0.f;
+
+    // Toast state
+    bool        toastVisible_  = false;
+    float       toastTimeLeft_ = 0.f;
+    std::string toastText_;
 
     void navigate(int delta);
     void resetView();
