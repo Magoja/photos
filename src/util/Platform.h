@@ -21,9 +21,9 @@ std::string desktopDir();
 std::optional<std::string> pickFolder();
 
 // Open an NSOpenPanel for file selection (multiple); returns selected paths
-std::vector<std::string>   pickFiles(const std::vector<std::string>& extensions);
+std::vector<std::string> pickFiles(const std::vector<std::string>& extensions);
 
 // Ensure directory exists (create if needed)
 bool ensureDir(const std::string& path);
 
-} // namespace util
+}  // namespace util

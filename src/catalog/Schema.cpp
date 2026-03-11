@@ -114,33 +114,34 @@ INSERT OR IGNORE INTO export_presets (name, quality, max_width, max_height)
 // ── Migration helpers ─────────────────────────────────────────────────────────
 
 static void applyV1(Database& db) {
-    db.exec(kSeedPresets);
-    db.exec("INSERT OR IGNORE INTO schema_version(version) VALUES (1)");
-    spdlog::info("Schema v1 applied");
+  db.exec(kSeedPresets);
+  db.exec("INSERT OR IGNORE INTO schema_version(version) VALUES (1)");
+  spdlog::info("Schema v1 applied");
 }
 
 static void migrateToRelativePaths(Database& db, const std::string& libraryRoot) {
-    // Strip the library root prefix from folder paths, converting absolute
-    // paths to portable relative paths (SUBSTR is 1-based, +1 for separator).
-    size_t offset = libraryRoot.size() + 2;
-    db.exec("UPDATE folders SET path = SUBSTR(path, " +
-            std::to_string(offset) +
-            ") WHERE path LIKE '" + libraryRoot + "/%'");
-    db.exec("INSERT OR IGNORE INTO schema_version(version) VALUES (2)");
-    spdlog::info("Schema v2 applied: migrated folder paths to relative");
+  // Strip the library root prefix from folder paths, converting absolute
+  // paths to portable relative paths (SUBSTR is 1-based, +1 for separator).
+  size_t offset = libraryRoot.size() + 2;
+  db.exec("UPDATE folders SET path = SUBSTR(path, " + std::to_string(offset) +
+          ") WHERE path LIKE '" + libraryRoot + "/%'");
+  db.exec("INSERT OR IGNORE INTO schema_version(version) VALUES (2)");
+  spdlog::info("Schema v2 applied: migrated folder paths to relative");
 }
 
 // ── Schema::apply ─────────────────────────────────────────────────────────────
 
 void Schema::apply(Database& db, const std::string& libraryRoot) {
-    db.exec(kDDL);
+  db.exec(kDDL);
 
-    int64_t ver = db.queryInt64("SELECT MAX(version) FROM schema_version", 0);
+  int64_t ver = db.queryInt64("SELECT MAX(version) FROM schema_version", 0);
 
-    if (ver < 1) applyV1(db);
-    if (ver < 2 && !libraryRoot.empty()) migrateToRelativePaths(db, libraryRoot);
+  if (ver < 1)
+    applyV1(db);
+  if (ver < 2 && !libraryRoot.empty())
+    migrateToRelativePaths(db, libraryRoot);
 
-    spdlog::debug("Schema version: {}", ver < 1 ? 1 : (int)ver);
+  spdlog::debug("Schema version: {}", ver < 1 ? 1 : (int)ver);
 }
 
-} // namespace catalog
+}  // namespace catalog

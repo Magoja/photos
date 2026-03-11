@@ -5,18 +5,18 @@
 namespace ui {
 
 class SettingsPanel {
-public:
-    SettingsPanel(catalog::PhotoRepository& repo, const std::string& dbPath);
+ public:
+  SettingsPanel(catalog::PhotoRepository& repo, const std::string& dbPath);
 
-    void open();
-    void render();
+  void open();
+  void render();
 
-    bool isOpen() const { return open_; }
+  bool isOpen() const { return open_; }
 
-private:
-    catalog::PhotoRepository& repo_;
-    std::string               dbPath_;
-    bool                      open_ = false;
+ private:
+  catalog::PhotoRepository& repo_;
+  std::string dbPath_;
+  bool open_ = false;
 };
 
-} // namespace ui
+}  // namespace ui

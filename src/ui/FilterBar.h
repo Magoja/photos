@@ -5,18 +5,18 @@ namespace ui {
 enum class FilterMode { All, Picked };
 
 class FilterBar {
-public:
-    FilterMode mode() const { return mode_; }
-    bool       changed() const { return changed_; }
+ public:
+  FilterMode mode() const { return mode_; }
+  bool changed() const { return changed_; }
 
-    void setMode(FilterMode m) { mode_ = m; }
+  void setMode(FilterMode m) { mode_ = m; }
 
-    // Call once per frame; returns true if filter changed
-    bool render();
+  // Call once per frame; returns true if filter changed
+  bool render();
 
-private:
-    FilterMode mode_    = FilterMode::All;
-    bool       changed_ = false;
+ private:
+  FilterMode mode_ = FilterMode::All;
+  bool changed_ = false;
 };
 
-} // namespace ui
+}  // namespace ui

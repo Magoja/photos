@@ -7,26 +7,26 @@ struct SDL_Window;
 namespace ui {
 
 class Renderer {
-public:
-    ~Renderer();
+ public:
+  ~Renderer();
 
-    bool init(SDL_Window* window);
-    void shutdown();
+  bool init(SDL_Window* window);
+  void shutdown();
 
-    // Begin a new frame; call between beginFrame() and endFrame()
-    void beginFrame();
-    void endFrame();
+  // Begin a new frame; call between beginFrame() and endFrame()
+  void beginFrame();
+  void endFrame();
 
-    TextureManager& textures() { return texMgr_; }
+  TextureManager& textures() { return texMgr_; }
 
-    // Frame time in milliseconds
-    float frameTimeMs() const { return frameTimeMs_; }
+  // Frame time in milliseconds
+  float frameTimeMs() const { return frameTimeMs_; }
 
-private:
-    struct Impl;
-    Impl* impl_ = nullptr;
-    TextureManager texMgr_;
-    float frameTimeMs_ = 0.f;
+ private:
+  struct Impl;
+  Impl* impl_ = nullptr;
+  TextureManager texMgr_;
+  float frameTimeMs_ = 0.f;
 };
 
-} // namespace ui
+}  // namespace ui
