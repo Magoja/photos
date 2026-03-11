@@ -11,8 +11,9 @@ namespace import_ns {
 // ── EXIF formatting helpers ───────────────────────────────────────────────────
 
 static std::string formatShutter(float v) {
-  if (v <= 0.f)
+  if (v <= 0.f) {
     return "";
+  }
   if (v >= 1.f) {
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%.0fs", v);
@@ -27,15 +28,17 @@ static std::string formatShutter(float v) {
 static std::string timestampToExifString(time_t ts) {
   char buf[20] = {};
   struct tm* t = gmtime(&ts);
-  if (t)
+  if (t) {
     strftime(buf, sizeof(buf), "%Y:%m:%d %H:%M:%S", t);
+  }
   return buf;
 }
 
 // "YYYY:MM:DD HH:MM:SS" → "YYYY-MM-DDTHH:MM:SS"
 static std::string exifDateToIso(const char* src) {
-  if (!src || !*src)
+  if (!src || !*src) {
     return "";
+  }
   char buf[20] = {};
   if (std::strlen(src) >= 19) {
     buf[0] = src[0];
@@ -63,8 +66,9 @@ static std::string exifDateToIso(const char* src) {
 
 static double gpsToDecimal(const float pos[3], const char ref) {
   double deg = pos[0] + pos[1] / 60.0 + pos[2] / 3600.0;
-  if (ref == 'S' || ref == 'W')
+  if (ref == 'S' || ref == 'W') {
     deg = -deg;
+  }
   return deg;
 }
 
@@ -99,13 +103,15 @@ static void extractExif(LibRaw& raw, ExifData& ex) {
 
 static void extractThumbnail(LibRaw& raw, DecodeResult& result) {
   int rc = raw.unpack_thumb();
-  if (rc != LIBRAW_SUCCESS)
+  if (rc != LIBRAW_SUCCESS) {
     return;
+  }
 
   libraw_processed_image_t* thumb = raw.dcraw_make_mem_thumb(&rc);
   if (thumb && rc == LIBRAW_SUCCESS) {
-    if (thumb->type == LIBRAW_IMAGE_JPEG)
+    if (thumb->type == LIBRAW_IMAGE_JPEG) {
       result.thumbJpeg.assign(thumb->data, thumb->data + thumb->data_size);
+    }
     LibRaw::dcraw_clear_mem(thumb);
   }
 }

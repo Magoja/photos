@@ -28,8 +28,9 @@ static FolderRecord rowToFolder(Stmt& s) {
 
 static std::vector<int64_t> collectIds(Stmt& s) {
   std::vector<int64_t> ids;
-  while (s.step())
+  while (s.step()) {
     ids.push_back(s.getInt64(0));
+  }
   return ids;
 }
 
@@ -79,28 +80,32 @@ int64_t PhotoRepository::upsertVolume(const VolumeRecord& v) {
   s.bind(1, v.uuid);
   s.bind(2, v.label);
   s.bind(3, v.mountPath);
-  if (s.step())
+  if (s.step()) {
     return s.getInt64(0);
+  }
   auto q = db_.prepare("SELECT id FROM volumes WHERE uuid=?");
   q.bind(1, v.uuid);
-  if (q.step())
+  if (q.step()) {
     return q.getInt64(0);
+  }
   return 0;
 }
 
 std::vector<VolumeRecord> PhotoRepository::listVolumes() {
   auto s = db_.prepare("SELECT id,uuid,label,mount_path,last_seen FROM volumes ORDER BY label");
   std::vector<VolumeRecord> out;
-  while (s.step())
+  while (s.step()) {
     out.push_back(rowToVolume(s));
+  }
   return out;
 }
 
 std::optional<VolumeRecord> PhotoRepository::findVolume(const std::string& uuid) {
   auto s = db_.prepare("SELECT id,uuid,label,mount_path,last_seen FROM volumes WHERE uuid=?");
   s.bind(1, uuid);
-  if (!s.step())
+  if (!s.step()) {
     return std::nullopt;
+  }
   return rowToVolume(s);
 }
 
@@ -115,49 +120,57 @@ int64_t PhotoRepository::upsertFolder(const FolderRecord& f) {
     " ON CONFLICT(path) DO UPDATE SET volume_id=excluded.volume_id,"
     " parent_id=excluded.parent_id, name=excluded.name"
     " RETURNING id");
-  if (f.parentId)
+  if (f.parentId) {
     s.bind(1, f.parentId);
-  else
+  } else {
     s.bindNull(1);
-  if (f.volumeId)
+  }
+  if (f.volumeId) {
     s.bind(2, f.volumeId);
-  else
+  } else {
     s.bindNull(2);
+  }
   s.bind(3, f.path);
   s.bind(4, f.name);
-  if (s.step())
+  if (s.step()) {
     return s.getInt64(0);
+  }
   auto q = db_.prepare("SELECT id FROM folders WHERE path=?");
   q.bind(1, f.path);
-  if (q.step())
+  if (q.step()) {
     return q.getInt64(0);
+  }
   return 0;
 }
 
 std::optional<FolderRecord> PhotoRepository::findFolder(const std::string& path) {
   auto s = db_.prepare(std::string(kFolderSelect) + " WHERE path=?");
   s.bind(1, path);
-  if (!s.step())
+  if (!s.step()) {
     return std::nullopt;
+  }
   return rowToFolder(s);
 }
 
 std::vector<FolderRecord> PhotoRepository::listFolders(int64_t volumeId) {
   Stmt s = volumeId ? db_.prepare(std::string(kFolderSelect) + " WHERE volume_id=? ORDER BY path")
                     : db_.prepare(std::string(kFolderSelect) + " ORDER BY path");
-  if (volumeId)
+  if (volumeId) {
     s.bind(1, volumeId);
+  }
   std::vector<FolderRecord> out;
-  while (s.step())
+  while (s.step()) {
     out.push_back(rowToFolder(s));
+  }
   return out;
 }
 
 int64_t PhotoRepository::folderPhotoCount(int64_t folderId) {
   auto s = db_.prepare("SELECT COUNT(*) FROM photos WHERE folder_id=?");
   s.bind(1, folderId);
-  if (s.step())
+  if (s.step()) {
     return s.getInt64(0);
+  }
   return 0;
 }
 
@@ -173,51 +186,62 @@ int64_t PhotoRepository::insertPhoto(const PhotoRecord& p) {
   auto s = db_.prepare(sql);
   s.bind(1, p.folderId);
   s.bind(2, p.filename);
-  if (!p.fileHash.empty())
+  if (!p.fileHash.empty()) {
     s.bind(3, p.fileHash);
-  else
+  } else {
     s.bindNull(3);
+  }
   s.bind(4, p.fileSize);
-  if (!p.captureTime.empty())
+  if (!p.captureTime.empty()) {
     s.bind(5, p.captureTime);
-  else
+  } else {
     s.bindNull(5);
-  if (!p.cameraMake.empty())
+  }
+  if (!p.cameraMake.empty()) {
     s.bind(6, p.cameraMake);
-  else
+  } else {
     s.bindNull(6);
-  if (!p.cameraModel.empty())
+  }
+  if (!p.cameraModel.empty()) {
     s.bind(7, p.cameraModel);
-  else
+  } else {
     s.bindNull(7);
-  if (!p.lensModel.empty())
+  }
+  if (!p.lensModel.empty()) {
     s.bind(8, p.lensModel);
-  else
+  } else {
     s.bindNull(8);
-  if (p.focalLengthMm)
+  }
+  if (p.focalLengthMm) {
     s.bind(9, p.focalLengthMm);
-  else
+  } else {
     s.bindNull(9);
-  if (p.aperture)
+  }
+  if (p.aperture) {
     s.bind(10, p.aperture);
-  else
+  } else {
     s.bindNull(10);
-  if (!p.shutterSpeed.empty())
+  }
+  if (!p.shutterSpeed.empty()) {
     s.bind(11, p.shutterSpeed);
-  else
+  } else {
     s.bindNull(11);
-  if (p.iso)
+  }
+  if (p.iso) {
     s.bind(12, p.iso);
-  else
+  } else {
     s.bindNull(12);
-  if (p.widthPx)
+  }
+  if (p.widthPx) {
     s.bind(13, p.widthPx);
-  else
+  } else {
     s.bindNull(13);
-  if (p.heightPx)
+  }
+  if (p.heightPx) {
     s.bind(14, p.heightPx);
-  else
+  } else {
     s.bindNull(14);
+  }
   s.bind(15, p.editSettings.empty() ? "{}" : p.editSettings);
   s.step();
   return db_.lastInsertRowid();
@@ -235,24 +259,27 @@ std::optional<PhotoRecord> PhotoRepository::findById(int64_t id) {
     "COALESCE(edit_settings,'{}')"
     " FROM photos WHERE id=?");
   s.bind(1, id);
-  if (!s.step())
+  if (!s.step()) {
     return std::nullopt;
+  }
   return rowToPhoto(s);
 }
 
 std::string PhotoRepository::getThumbPath(int64_t photoId) {
   auto s = db_.prepare("SELECT COALESCE(thumb_path,'') FROM photos WHERE id=?");
   s.bind(1, photoId);
-  if (s.step())
+  if (s.step()) {
     return s.getText(0);
+  }
   return "";
 }
 
 std::optional<int64_t> PhotoRepository::findByHash(const std::string& hash) {
   auto s = db_.prepare("SELECT id FROM photos WHERE file_hash=? LIMIT 1");
   s.bind(1, hash);
-  if (s.step())
+  if (s.step()) {
     return s.getInt64(0);
+  }
   return std::nullopt;
 }
 
@@ -300,8 +327,9 @@ void PhotoRepository::updateThumb(int64_t id, const std::string& path, int w, in
 std::string PhotoRepository::getSetting(const std::string& key, const std::string& def) {
   auto s = db_.prepare("SELECT value FROM app_settings WHERE key=?");
   s.bind(1, key);
-  if (s.step())
+  if (s.step()) {
     return s.getText(0);
+  }
   return def;
 }
 
@@ -324,10 +352,12 @@ std::string PhotoRepository::fullPathFor(int64_t folderId, const std::string& fi
   auto s = db_.prepare("SELECT path FROM folders WHERE id=?");
   s.bind(1, folderId);
   std::string folderRel;
-  if (s.step())
+  if (s.step()) {
     folderRel = s.getText(0);
-  if (libraryRoot_.empty())
+  }
+  if (libraryRoot_.empty()) {
     return folderRel + "/" + filename;
+  }
   return libraryRoot_ + "/" + folderRel + "/" + filename;
 }
 

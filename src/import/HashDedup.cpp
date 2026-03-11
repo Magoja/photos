@@ -18,15 +18,17 @@ static int64_t fileSize(FILE* f) {
 }
 
 static size_t readChunk(FILE* f, std::vector<uint8_t>& buf, long offset = 0) {
-  if (offset)
+  if (offset) {
     std::fseek(f, offset, SEEK_END);
+  }
   return std::fread(buf.data(), 1, kChunkSize, f);
 }
 
 uint64_t HashDedup::fastFingerprint(const std::string& path) {
   FILE* f = std::fopen(path.c_str(), "rb");
-  if (!f)
+  if (!f) {
     return 0;
+  }
 
   XXH3_state_t* state = XXH3_createState();
   XXH3_64bits_reset(state);
@@ -51,16 +53,18 @@ uint64_t HashDedup::fastFingerprint(const std::string& path) {
 
 std::string HashDedup::fullHash(const std::string& path) {
   FILE* f = std::fopen(path.c_str(), "rb");
-  if (!f)
+  if (!f) {
     return "";
+  }
 
   XXH3_state_t* state = XXH3_createState();
   XXH3_128bits_reset(state);
 
   std::vector<uint8_t> buf(256 * 1024);
   size_t n;
-  while ((n = std::fread(buf.data(), 1, buf.size(), f)) > 0)
+  while ((n = std::fread(buf.data(), 1, buf.size(), f)) > 0) {
     XXH3_128bits_update(state, buf.data(), n);
+  }
 
   std::fclose(f);
   XXH128_hash_t h = XXH3_128bits_digest(state);
@@ -71,8 +75,9 @@ std::string HashDedup::fullHash(const std::string& path) {
 std::optional<int64_t> HashDedup::isDuplicate(catalog::Database& db, const std::string& hash) {
   auto s = db.prepare("SELECT id FROM photos WHERE file_hash=? LIMIT 1");
   s.bind(1, hash);
-  if (s.step())
+  if (s.step()) {
     return s.getInt64(0);
+  }
   return std::nullopt;
 }
 

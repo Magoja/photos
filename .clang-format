@@ -12,6 +12,7 @@ BreakBeforeBraces: Attach
 AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
+InsertBraces: true
 SortIncludes: false
 PointerAlignment: Left
 SpaceBeforeParens: ControlStatements

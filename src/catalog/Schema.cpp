@@ -136,10 +136,12 @@ void Schema::apply(Database& db, const std::string& libraryRoot) {
 
   int64_t ver = db.queryInt64("SELECT MAX(version) FROM schema_version", 0);
 
-  if (ver < 1)
+  if (ver < 1) {
     applyV1(db);
-  if (ver < 2 && !libraryRoot.empty())
+  }
+  if (ver < 2 && !libraryRoot.empty()) {
     migrateToRelativePaths(db, libraryRoot);
+  }
 
   spdlog::debug("Schema version: {}", ver < 1 ? 1 : (int)ver);
 }

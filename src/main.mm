@@ -185,13 +185,15 @@ int main(int /*argc*/, char** /*argv*/) {
           std::lock_guard lk(db.mutex());
           return repo.findById(pid);
         }();
-        if (!rec)
+        if (!rec) {
           return;
+        }
 
         std::string srcPath = repo.fullPathFor(rec->folderId, rec->filename);
         auto dec = import_ns::RawDecoder::decode(srcPath);
-        if (!dec.ok || dec.thumbJpeg.empty())
+        if (!dec.ok || dec.thumbJpeg.empty()) {
           return;
+        }
 
         {
           std::lock_guard lk(db.mutex());
@@ -200,11 +202,13 @@ int main(int /*argc*/, char** /*argv*/) {
 
         // Now serve the freshly written file
         std::string newPath = repo.getThumbPath(pid);
-        if (newPath.empty())
+        if (newPath.empty()) {
           return;
+        }
         std::ifstream f2(newPath, std::ios::binary);
-        if (!f2)
+        if (!f2) {
           return;
+        }
         std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f2)), {});
         if (!bytes.empty()) {
           std::lock_guard lk(thumbMtx);
@@ -249,11 +253,13 @@ int main(int /*argc*/, char** /*argv*/) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
       ImGui_ImplSDL2_ProcessEvent(&event);
-      if (event.type == SDL_QUIT)
+      if (event.type == SDL_QUIT) {
         running = false;
+      }
       if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_q &&
-          (event.key.keysym.mod & KMOD_GUI))
+          (event.key.keysym.mod & KMOD_GUI)) {
         running = false;
+      }
     }
 
     int drawW = 0, drawH = 0;
@@ -262,8 +268,9 @@ int main(int /*argc*/, char** /*argv*/) {
 
     @autoreleasepool {
       id<CAMetalDrawable> drawable = [layer nextDrawable];
-      if (!drawable)
+      if (!drawable) {
         continue;
+      }
 
       rpd.colorAttachments[0].texture = drawable.texture;
       id<MTLCommandBuffer> cmdBuf = [cmdQueue commandBuffer];
@@ -330,8 +337,9 @@ int main(int /*argc*/, char** /*argv*/) {
       }
 
       // ── First-launch modal: ask user to choose library root ───────────
-      if (libraryRoot.empty())
+      if (libraryRoot.empty()) {
         ImGui::OpenPopup("Choose Library Folder");
+      }
       if (ImGui::BeginPopupModal("Choose Library Folder", nullptr,
                                  ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Choose a folder where Jakeutil Photos will store your images.");
@@ -344,8 +352,9 @@ int main(int /*argc*/, char** /*argv*/) {
             repo.setLibraryRoot(libraryRoot);
           }
         }
-        if (!libraryRoot.empty())
+        if (!libraryRoot.empty()) {
           ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
       }
 
@@ -397,8 +406,9 @@ int main(int /*argc*/, char** /*argv*/) {
       ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - sliderW);
       ImGui::SetNextItemWidth(sliderW);
       float zoom = grid.thumbScale();
-      if (ImGui::SliderFloat("##zoom", &zoom, 0.5f, 3.0f, ""))
+      if (ImGui::SliderFloat("##zoom", &zoom, 0.5f, 3.0f, "")) {
         grid.setThumbScale(zoom);
+      }
       ImGui::End();
 
       // ── Settings panel ────────────────────────────────────────────────

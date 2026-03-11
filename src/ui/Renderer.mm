@@ -68,8 +68,9 @@ bool Renderer::init(SDL_Window* window) {
 }
 
 void Renderer::shutdown() {
-  if (!impl_)
+  if (!impl_) {
     return;
+  }
   ImGui_ImplMetal_Shutdown();
   delete impl_;
   impl_ = nullptr;
@@ -80,8 +81,9 @@ Renderer::~Renderer() {
 }
 
 void Renderer::beginFrame() {
-  if (!impl_)
+  if (!impl_) {
     return;
+  }
 
   // Resize layer to current display size
   ImGuiIO& io = ImGui::GetIO();
@@ -89,8 +91,9 @@ void Renderer::beginFrame() {
                                          (CGFloat)io.DisplaySize.y * io.DisplayFramebufferScale.y);
 
   impl_->currentDrawable = [impl_->layer nextDrawable];
-  if (!impl_->currentDrawable)
+  if (!impl_->currentDrawable) {
     return;
+  }
   impl_->rpd.colorAttachments[0].texture = impl_->currentDrawable.texture;
 
   impl_->currentCmdBuf = [impl_->cmdQueue commandBuffer];
@@ -101,8 +104,9 @@ void Renderer::beginFrame() {
 }
 
 void Renderer::endFrame() {
-  if (!impl_ || !impl_->currentDrawable)
+  if (!impl_ || !impl_->currentDrawable) {
     return;
+  }
 
   ImGui::Render();
 

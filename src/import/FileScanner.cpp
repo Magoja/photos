@@ -31,23 +31,27 @@ std::vector<ScannedFile> FileScanner::scan(const std::string& rootPath,
   std::vector<ScannedFile> result;
   std::error_code ec;
   fs::recursive_directory_iterator it(rootPath, fs::directory_options::skip_permission_denied, ec);
-  if (ec)
+  if (ec) {
     return result;
+  }
 
   for (auto& entry : it) {
-    if (!entry.is_regular_file(ec))
+    if (!entry.is_regular_file(ec)) {
       continue;
+    }
     auto& p = entry.path();
-    if (!isSupported(p.extension().string()))
+    if (!isSupported(p.extension().string())) {
       continue;
+    }
 
     ScannedFile sf;
     sf.path = p.string();
     sf.size = static_cast<int64_t>(entry.file_size(ec));
     result.push_back(sf);
 
-    if (progress)
+    if (progress) {
       progress(sf.path);
+    }
   }
   return result;
 }

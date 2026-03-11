@@ -34,12 +34,14 @@ static std::pair<int, int> computeVisibleRowRange(int totalRows, float rowH, flo
 }
 
 static std::pair<float, float> computeLetterboxSize(int tw, int th, float thumbW, float thumbH) {
-  if (tw <= 0 || th <= 0)
+  if (tw <= 0 || th <= 0) {
     return {thumbW, thumbH};
+  }
   float aspect = (float)tw / (float)th;
   float cellAspect = thumbW / thumbH;
-  if (aspect > cellAspect)
+  if (aspect > cellAspect) {
     return {thumbW, thumbW / aspect};
+  }
   return {thumbH * aspect, thumbH};
 }
 
@@ -58,14 +60,16 @@ void GridView::render() {
   auto [firstRow, lastRow] =
     computeVisibleRowRange(totalRows, cellH, ImGui::GetScrollY(), ImGui::GetWindowHeight());
 
-  if (firstRow > 0)
+  if (firstRow > 0) {
     ImGui::Dummy({panelW, firstRow * cellH});
+  }
 
   for (int row = firstRow; row < lastRow; ++row) {
     for (int col = 0; col < cols; ++col) {
       int idx = row * cols + col;
-      if (idx >= (int)photoIds_.size())
+      if (idx >= (int)photoIds_.size()) {
         break;
+      }
 
       int64_t pid = photoIds_[idx];
       void* tex = texMgr_.get(pid);
@@ -79,8 +83,9 @@ void GridView::render() {
       auto [tw, th] = texMgr_.getSize(pid);
       auto [imgW, imgH] = computeLetterboxSize(tw, th, thumbW, thumbH);
 
-      if (col > 0)
+      if (col > 0) {
         ImGui::SameLine();
+      }
       ImVec2 cellPos = ImGui::GetCursorScreenPos();
 
       ImGui::PushID(idx);
@@ -97,9 +102,10 @@ void GridView::render() {
       ImVec2 imgMax = {imgMin.x + imgW, imgMin.y + imgH};
       dl->AddImage(reinterpret_cast<ImTextureID>(tex), imgMin, imgMax);
 
-      if (sel)
+      if (sel) {
         dl->AddRect(cellPos, {cellPos.x + cellW, cellPos.y + cellH}, IM_COL32(255, 200, 50, 255),
                     0.f, 0, 2.f);
+      }
 
       if (!repo_.libraryRootExists()) {
         ImVec2 badgePos = {cellPos.x + cellW - 18.f, cellPos.y + 2.f};
@@ -110,13 +116,15 @@ void GridView::render() {
 
       if (clicked) {
         selectedId_ = pid;
-        if (onSelectCb_)
+        if (onSelectCb_) {
           onSelectCb_(pid);
+        }
       }
       if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
         selectedId_ = pid;
-        if (onSelectCb_)
+        if (onSelectCb_) {
           onSelectCb_(pid);
+        }
       }
 
       ImGui::PopID();
@@ -124,8 +132,9 @@ void GridView::render() {
   }
 
   int remainRows = totalRows - lastRow;
-  if (remainRows > 0)
+  if (remainRows > 0) {
     ImGui::Dummy({panelW, remainRows * cellH});
+  }
 }
 
 }  // namespace ui

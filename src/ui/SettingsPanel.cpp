@@ -12,8 +12,9 @@ void SettingsPanel::open() {
 }
 
 void SettingsPanel::render() {
-  if (!open_)
+  if (!open_) {
     return;
+  }
 
   ImGui::SetNextWindowSize({520, 130}, ImGuiCond_FirstUseEver);
   if (ImGui::Begin("Settings", &open_)) {

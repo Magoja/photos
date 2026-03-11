@@ -25,8 +25,9 @@ class ThreadPool {
     auto fut = task->get_future();
     {
       std::lock_guard lk(mutex_);
-      if (stop_)
+      if (stop_) {
         throw std::runtime_error("ThreadPool is stopped");
+      }
       queue_.emplace([task] { (*task)(); });
     }
     cv_.notify_one();

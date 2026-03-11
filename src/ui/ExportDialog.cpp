@@ -40,14 +40,16 @@ void ExportDialog::open(const std::vector<int64_t>& selectedIds) {
 }
 
 void ExportDialog::close() {
-  if (exporter_)
+  if (exporter_) {
     exporter_->cancel();
+  }
   open_ = false;
 }
 
 void ExportDialog::render() {
-  if (!open_)
+  if (!open_) {
     return;
+  }
 
   ImGui::SetNextWindowSize({480, 280}, ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver,
@@ -65,18 +67,22 @@ void ExportDialog::render() {
     ImGui::Text("Preset:");
     for (int i = 0; i < (int)presets_.size(); ++i) {
       bool sel = (i == selectedPreset_);
-      if (ImGui::RadioButton(presets_[i].name.c_str(), sel))
+      if (ImGui::RadioButton(presets_[i].name.c_str(), sel)) {
         selectedPreset_ = i;
+      }
     }
 
     ImGui::Separator();
     ImGui::Text("Target folder:");
     char buf[512] = {};
-    if (!presets_.empty())
+    if (!presets_.empty()) {
       std::snprintf(buf, sizeof(buf), "%s", presets_[selectedPreset_].targetPath.c_str());
-    if (ImGui::InputText("##target", buf, sizeof(buf)))
-      if (!presets_.empty())
+    }
+    if (ImGui::InputText("##target", buf, sizeof(buf))) {
+      if (!presets_.empty()) {
         presets_[selectedPreset_].targetPath = buf;
+      }
+    }
 
     ImGui::Separator();
     if (ImGui::Button("Export")) {
@@ -104,21 +110,24 @@ void ExportDialog::render() {
       }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel##pre"))
+    if (ImGui::Button("Cancel##pre")) {
       close();
+    }
 
   } else if (exporting_) {
     float prog = totalCount_ > 0 ? (float)doneCount_ / totalCount_ : 0.f;
     ImGui::ProgressBar(prog, {-1, 0});
     ImGui::Text("%d / %d", doneCount_, totalCount_);
-    if (ImGui::Button("Cancel##exp"))
+    if (ImGui::Button("Cancel##exp")) {
       exporter_->cancel();
+    }
 
   } else {
     ImGui::TextColored({0.2f, 1.f, 0.2f, 1.f}, "Export complete! %d exported, %d errors",
                        exportedCount_, errorCount_);
-    if (ImGui::Button("Close"))
+    if (ImGui::Button("Close")) {
       close();
+    }
   }
 
   ImGui::End();

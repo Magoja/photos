@@ -30,8 +30,9 @@ void ImportDialog::open(const std::string& sourcePath, const std::string& destPa
 }
 
 void ImportDialog::close() {
-  if (importer_)
+  if (importer_) {
     importer_->cancel();
+  }
   open_ = false;
 }
 
@@ -56,16 +57,18 @@ void ImportDialog::startImport() {
     }
     finished_ = true;
     importing_ = false;
-    if (doneCb_)
+    if (doneCb_) {
       doneCb_();
+    }
   });
   importer_->start();
   importing_ = true;
 }
 
 void ImportDialog::render() {
-  if (!open_)
+  if (!open_) {
     return;
+  }
 
   ImGui::SetNextWindowSize({560, 240}, ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver,
@@ -89,10 +92,11 @@ void ImportDialog::render() {
         // Auto-uncheck copy if source is inside dest
         std::error_code ec;
         auto rel = fs::relative(sourcePath_, destPath_, ec);
-        if (!ec && !rel.empty() && rel.native().find("..") == std::string::npos)
+        if (!ec && !rel.empty() && rel.native().find("..") == std::string::npos) {
           copyFiles_ = false;
-        else
+        } else {
           copyFiles_ = true;
+        }
       }
     }
 
@@ -118,8 +122,9 @@ void ImportDialog::render() {
       startImport();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel##pre"))
+    if (ImGui::Button("Cancel##pre")) {
       close();
+    }
   } else if (importing_) {
     int done = doneFiles_;
     int total = totalFiles_;
@@ -140,8 +145,9 @@ void ImportDialog::render() {
     // Finished
     ImGui::TextColored({0.2f, 1.f, 0.2f, 1.f}, "Done!  %d new,  %d duplicates,  %d errors",
                        stats_.imported, stats_.duplicates, stats_.errors);
-    if (ImGui::Button("Close"))
+    if (ImGui::Button("Close")) {
       close();
+    }
   }
 
   ImGui::End();

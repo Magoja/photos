@@ -15,8 +15,9 @@ namespace catalog {
 static time_t parseIsoDateTime(const std::string& s) {
   struct tm t {};
   int y, mo, d, h, mi, sec;
-  if (std::sscanf(s.c_str(), "%d-%d-%dT%d:%d:%d", &y, &mo, &d, &h, &mi, &sec) < 3)
+  if (std::sscanf(s.c_str(), "%d-%d-%dT%d:%d:%d", &y, &mo, &d, &h, &mi, &sec) < 3) {
     return 0;
+  }
   t.tm_year = y - 1900;
   t.tm_mon = mo - 1;
   t.tm_mday = d;
@@ -45,12 +46,14 @@ BackupManager::BackupManager(Database& db, const std::string& dbPath, const std:
 bool BackupManager::isBackupDue() const {
   PhotoRepository repo(const_cast<Database&>(db_));
   std::string lastStr = repo.getSetting("last_backup_time", "");
-  if (lastStr.empty())
+  if (lastStr.empty()) {
     return true;
+  }
 
   time_t last = parseIsoDateTime(lastStr);
-  if (!last)
+  if (!last) {
     return true;
+  }
 
   double days = std::difftime(std::time(nullptr), last) / 86400.0;
   return days >= kBackupIntervalDays;
@@ -100,8 +103,9 @@ void BackupManager::rotate() {
     std::string path;
   };
   std::vector<Entry> entries;
-  while (s.step())
+  while (s.step()) {
     entries.push_back({s.getInt64(0), s.getText(1)});
+  }
 
   int excessCount = static_cast<int>(entries.size()) - kMaxBackups;
   for (auto& [id, path] : std::span(entries).first(std::max(0, excessCount))) {
@@ -116,17 +120,20 @@ void BackupManager::rotate() {
 }
 
 bool BackupManager::checkAndBackup() {
-  if (!isBackupDue())
+  if (!isBackupDue()) {
     return false;
+  }
 
   std::string path = doBackup();
-  if (path.empty())
+  if (path.empty()) {
     return false;
+  }
 
   int64_t sz = 0;
   std::error_code ec;
-  if (fs::exists(path, ec))
+  if (fs::exists(path, ec)) {
     sz = static_cast<int64_t>(fs::file_size(path, ec));
+  }
 
   recordBackup(path, sz);
   rotate();

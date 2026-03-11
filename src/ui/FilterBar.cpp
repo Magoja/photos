@@ -11,29 +11,33 @@ bool FilterBar::render() {
   bool allSelected = (mode_ == FilterMode::All);
   bool pickedSelected = (mode_ == FilterMode::Picked);
 
-  if (allSelected)
+  if (allSelected) {
     ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+  }
   if (ImGui::Button("All")) {
     if (mode_ != FilterMode::All) {
       mode_ = FilterMode::All;
       changed_ = true;
     }
   }
-  if (allSelected)
+  if (allSelected) {
     ImGui::PopStyleColor();
+  }
 
   ImGui::SameLine();
 
-  if (pickedSelected)
+  if (pickedSelected) {
     ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+  }
   if (ImGui::Button("Picked")) {
     if (mode_ != FilterMode::Picked) {
       mode_ = FilterMode::Picked;
       changed_ = true;
     }
   }
-  if (pickedSelected)
+  if (pickedSelected) {
     ImGui::PopStyleColor();
+  }
 
   ImGui::PopStyleVar();
   return changed_;

@@ -38,6 +38,7 @@ ctest --preset debug --output-on-failure  # run tests
 - **Single responsibility**: every function does exactly one thing. If a block of code inside a function needs an explanatory comment, extract it into a named helper instead.
 - **C++20 features**: prefer `std::ranges` / `std::views` algorithms over raw loops; use structured bindings, `std::span`, `std::format` (where available), and concepts/requires-clauses where they improve clarity. Avoid hand-rolled loops when a standard algorithm expresses intent more directly.
 - **Indentation**: 2 spaces (no tabs). Enforced by `.clang-format` at project root.
+- **Braces**: always use curly braces for `if`/`else`/`for`/`while` bodies, even single-line. Enforced by `.clang-format`.
 
 ## Dependency graph
 ```

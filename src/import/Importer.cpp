@@ -15,13 +15,15 @@ Importer::Importer(Database& db, const ImportOptions& opts) : db_(db), opts_(opt
 
 Importer::~Importer() {
   cancel();
-  if (thread_.joinable())
+  if (thread_.joinable()) {
     thread_.join();
+  }
 }
 
 void Importer::start() {
-  if (running_)
+  if (running_) {
     return;
+  }
   cancelled_ = false;
   running_ = true;
   thread_ = std::thread([this] { run(); });
@@ -103,8 +105,9 @@ void Importer::run() {
       spdlog::info("Import cancelled at file {}/{}", done, stats_.total);
       break;
     }
-    if (progressCb_)
+    if (progressCb_) {
       progressCb_(done, stats_.total, sf.path);
+    }
     ++done;
 
     try {
@@ -149,8 +152,9 @@ void Importer::run() {
         pid = repo.insertPhoto(p);
       }
 
-      if (!dec.thumbJpeg.empty() && pid > 0)
+      if (!dec.thumbJpeg.empty() && pid > 0) {
         cache.generate(pid, hash, dec.thumbJpeg, repo);
+      }
 
       ++stats_.imported;
       spdlog::debug("Import: imported {} ({})", p.filename, hash.substr(0, 8));
@@ -164,8 +168,9 @@ void Importer::run() {
   running_ = false;
   spdlog::info("Import done: imported={} duplicates={} errors={}", stats_.imported,
                stats_.duplicates, stats_.errors);
-  if (doneCb_)
+  if (doneCb_) {
     doneCb_(stats_);
+  }
 }
 
 }  // namespace import_ns

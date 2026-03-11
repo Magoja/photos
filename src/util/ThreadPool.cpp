@@ -3,8 +3,9 @@
 namespace util {
 
 ThreadPool::ThreadPool(size_t numThreads) {
-  if (numThreads == 0)
+  if (numThreads == 0) {
     numThreads = 1;
+  }
   workers_.reserve(numThreads);
   for (size_t i = 0; i < numThreads; ++i) {
     workers_.emplace_back([this] {
@@ -13,8 +14,9 @@ ThreadPool::ThreadPool(size_t numThreads) {
         {
           std::unique_lock lk(mutex_);
           cv_.wait(lk, [this] { return stop_ || !queue_.empty(); });
-          if (stop_ && queue_.empty())
+          if (stop_ && queue_.empty()) {
             return;
+          }
           task = std::move(queue_.front());
           queue_.pop();
           ++active_;
@@ -40,9 +42,11 @@ void ThreadPool::stop() {
     stop_ = true;
   }
   cv_.notify_all();
-  for (auto& w : workers_)
-    if (w.joinable())
+  for (auto& w : workers_) {
+    if (w.joinable()) {
       w.join();
+    }
+  }
 }
 
 void ThreadPool::waitAll() {

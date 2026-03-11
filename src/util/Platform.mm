@@ -18,8 +18,9 @@ static std::string nsStringToStd(NSString* s) {
 static std::string librarySubdir(NSSearchPathDirectory dir, const std::string& sub) {
   NSArray<NSString*>* paths = NSSearchPathForDirectoriesInDomains(dir, NSUserDomainMask, YES);
   NSString* base = paths.firstObject;
-  if (!base)
+  if (!base) {
     return "";
+  }
   NSString* full = [base
     stringByAppendingPathComponent:[NSString
                                      stringWithUTF8String:("com.jakeutil.photos/" + sub).c_str()]];
@@ -55,8 +56,9 @@ std::optional<std::string> pickFolder() {
 
   if ([panel runModal] == NSModalResponseOK) {
     NSURL* url = panel.URLs.firstObject;
-    if (url)
+    if (url) {
       return nsStringToStd(url.path);
+    }
   }
   return std::nullopt;
 }
@@ -73,14 +75,16 @@ std::vector<std::string> pickFiles(const std::vector<std::string>& extensions) {
       for (auto& ext : extensions) {
         NSString* extStr = [NSString stringWithUTF8String:ext.c_str()];
         UTType* ut = [UTType typeWithFilenameExtension:extStr];
-        if (ut)
+        if (ut) {
           [types addObject:ut];
+        }
       }
       panel.allowedContentTypes = types;
     } else {
       NSMutableArray* types = [NSMutableArray array];
-      for (auto& ext : extensions)
+      for (auto& ext : extensions) {
         [types addObject:[NSString stringWithUTF8String:ext.c_str()]];
+      }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
       panel.allowedFileTypes = types;
@@ -90,8 +94,9 @@ std::vector<std::string> pickFiles(const std::vector<std::string>& extensions) {
 
   std::vector<std::string> result;
   if ([panel runModal] == NSModalResponseOK) {
-    for (NSURL* url in panel.URLs)
+    for (NSURL* url in panel.URLs) {
       result.push_back(nsStringToStd(url.path));
+    }
   }
   return result;
 }

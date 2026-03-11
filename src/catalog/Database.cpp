@@ -7,10 +7,12 @@ namespace catalog {
 // ── Stmt ─────────────────────────────────────────────────────────────────────
 bool Stmt::step() {
   int rc = sqlite3_step(stmt_);
-  if (rc == SQLITE_ROW)
+  if (rc == SQLITE_ROW) {
     return true;
-  if (rc == SQLITE_DONE)
+  }
+  if (rc == SQLITE_DONE) {
     return false;
+  }
   throw DbError("sqlite3_step failed", rc);
 }
 
@@ -56,8 +58,9 @@ Database::Database(const std::string& path) {
 }
 
 Database::~Database() {
-  for (auto& [sql, stmt] : stmtCache_)
+  for (auto& [sql, stmt] : stmtCache_) {
     sqlite3_finalize(stmt);
+  }
   stmtCache_.clear();
   if (db_) {
     sqlite3_close_v2(db_);
@@ -102,14 +105,16 @@ Transaction Database::transaction() {
 
 int64_t Database::queryInt64(const std::string& sql, int64_t defaultVal) {
   auto stmt = prepare(sql);
-  if (stmt.step())
+  if (stmt.step()) {
     return stmt.getInt64(0);
+  }
   return defaultVal;
 }
 
 void Database::check(int rc, const char* ctx) {
-  if (rc != SQLITE_OK && rc != SQLITE_ROW && rc != SQLITE_DONE)
+  if (rc != SQLITE_OK && rc != SQLITE_ROW && rc != SQLITE_DONE) {
     throw DbError(std::string(ctx) + " failed", rc);
+  }
 }
 
 }  // namespace catalog

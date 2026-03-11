@@ -31,8 +31,9 @@ void FullscreenView::resetView() {
 }
 
 void FullscreenView::navigate(int delta) {
-  if (photoIds_.empty())
+  if (photoIds_.empty()) {
     return;
+  }
   currentIdx_ = std::clamp(currentIdx_ + delta, 0, (int)photoIds_.size() - 1);
   currentId_ = photoIds_[currentIdx_];
   resetView();
@@ -41,20 +42,24 @@ void FullscreenView::navigate(int delta) {
 // ── Input handlers ────────────────────────────────────────────────────────────
 
 void FullscreenView::handleNavKeys() {
-  if (ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(ImGuiKey_G))
+  if (ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(ImGuiKey_G)) {
     close();
-  if (ImGui::IsKeyPressed(ImGuiKey_RightArrow) || ImGui::IsKeyPressed(ImGuiKey_DownArrow))
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_RightArrow) || ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
     navigate(+1);
-  if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || ImGui::IsKeyPressed(ImGuiKey_UpArrow))
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
     navigate(-1);
+  }
 
   if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent) && currentId_ > 0) {
     auto rec = repo_.findById(currentId_);
     if (rec) {
       int newPicked = rec->picked ? 0 : 1;
       repo_.updatePicked(currentId_, newPicked);
-      if (pickChangedCb_)
+      if (pickChangedCb_) {
         pickChangedCb_(currentId_, newPicked);
+      }
       toastText_ = newPicked ? "Picked" : "Unpicked";
       toastVisible_ = true;
       toastTimeLeft_ = 1.2f;
@@ -63,8 +68,9 @@ void FullscreenView::handleNavKeys() {
 }
 
 void FullscreenView::handleZoomAndPan(const ImGuiIO& io) {
-  if (io.MouseWheel != 0.f)
+  if (io.MouseWheel != 0.f) {
     zoom_ = std::clamp(zoom_ * (1.f + io.MouseWheel * 0.1f), 0.1f, 20.f);
+  }
   if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
     panX_ += io.MouseDelta.x;
     panY_ += io.MouseDelta.y;
@@ -88,8 +94,9 @@ void FullscreenView::drawPhoto(ImDrawList* dl, ImVec2 scrSz) const {
 
 void FullscreenView::drawStatusOverlay(ImDrawList* dl, ImVec2 scrSz) const {
   auto rec = repo_.findById(currentId_);
-  if (!rec)
+  if (!rec) {
     return;
+  }
   ImFont* font = ImGui::GetFont();
   float fs = ImGui::GetFontSize();
   char info[256];
@@ -124,8 +131,9 @@ void FullscreenView::tickToast(ImDrawList* dl, ImVec2 scrSz, float dt) {
 // ── render ────────────────────────────────────────────────────────────────────
 
 void FullscreenView::render() {
-  if (!open_)
+  if (!open_) {
     return;
+  }
 
   ImGuiIO& io = ImGui::GetIO();
   ImVec2 scrSz = io.DisplaySize;
@@ -147,8 +155,9 @@ void FullscreenView::render() {
   drawBackground(dl, scrSz);
   drawPhoto(dl, scrSz);
   drawStatusOverlay(dl, scrSz);
-  if (toastVisible_)
+  if (toastVisible_) {
     tickToast(dl, scrSz, io.DeltaTime);
+  }
 }
 
 }  // namespace ui

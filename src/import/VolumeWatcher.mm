@@ -21,13 +21,15 @@ static void onDiskAppeared(DADiskRef disk, void* ctx) {
   auto* w = static_cast<VolumeWatcher*>(ctx);
 
   CFDictionaryRef desc = DADiskCopyDescription(disk);
-  if (!desc)
+  if (!desc) {
     return;
+  }
 
   auto get = [&](CFStringRef key) -> std::string {
     CFTypeRef v = CFDictionaryGetValue(desc, key);
-    if (!v)
+    if (!v) {
       return {};
+    }
     if (CFGetTypeID(v) == CFStringGetTypeID()) {
       char buf[512] = {};
       CFStringGetCString((CFStringRef)v, buf, sizeof(buf), kCFStringEncodingUTF8);
@@ -79,8 +81,9 @@ static void onDiskDisappeared(DADiskRef disk, void* ctx) {
   auto* w = static_cast<VolumeWatcher*>(ctx);
 
   CFDictionaryRef desc = DADiskCopyDescription(disk);
-  if (!desc)
+  if (!desc) {
     return;
+  }
 
   std::string uuid;
   CFTypeRef uuidRef = CFDictionaryGetValue(desc, kDADiskDescriptionVolumeUUIDKey);
@@ -93,8 +96,9 @@ static void onDiskDisappeared(DADiskRef disk, void* ctx) {
   }
   CFRelease(desc);
 
-  if (!uuid.empty())
+  if (!uuid.empty()) {
     w->onUnmounted(uuid);
+  }
 }
 
 // ── VolumeWatcher ─────────────────────────────────────────────────────────────
@@ -129,8 +133,9 @@ void VolumeWatcher::start() {
 }
 
 void VolumeWatcher::stop() {
-  if (!impl_->session)
+  if (!impl_->session) {
     return;
+  }
   DASessionUnscheduleFromRunLoop(impl_->session, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
   CFRelease(impl_->session);
   impl_->session = nullptr;
@@ -139,14 +144,16 @@ void VolumeWatcher::stop() {
 
 void VolumeWatcher::onMounted(const VolumeInfo& info) {
   spdlog::info("Volume mounted uuid={} path={} label={}", info.uuid, info.mountPath, info.label);
-  if (mountedCb_)
+  if (mountedCb_) {
     mountedCb_(info);
+  }
 }
 
 void VolumeWatcher::onUnmounted(const std::string& uuid) {
   spdlog::info("Volume unmounted uuid={}", uuid);
-  if (unmountedCb_)
+  if (unmountedCb_) {
     unmountedCb_(uuid);
+  }
 }
 
 }  // namespace import_ns

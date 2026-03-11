@@ -27,8 +27,9 @@ void FolderTreePanel::refresh() {
 static std::map<int64_t, std::vector<catalog::FolderRecord>> groupByParent(
   std::span<const catalog::FolderRecord> folders) {
   std::map<int64_t, std::vector<catalog::FolderRecord>> byParent;
-  for (auto& f : folders)
+  for (auto& f : folders) {
     byParent[f.parentId].push_back(f);
+  }
   return byParent;
 }
 
@@ -36,14 +37,16 @@ void FolderTreePanel::renderFolderChildren(
   int64_t parentId, const std::map<int64_t, std::vector<catalog::FolderRecord>>& byParent,
   const std::map<int64_t, int64_t>& counts) {
   auto it = byParent.find(parentId);
-  if (it == byParent.end())
+  if (it == byParent.end()) {
     return;
+  }
 
   for (auto& f : it->second) {
     bool hasChildren = byParent.count(f.id) > 0;
     int64_t cnt = 0;
-    if (auto ci = counts.find(f.id); ci != counts.end())
+    if (auto ci = counts.find(f.id); ci != counts.end()) {
       cnt = ci->second;
+    }
 
     char label[512];
     std::snprintf(label, sizeof(label), "%s  (%lld)##f%lld", f.name.c_str(), (long long)cnt,
@@ -53,8 +56,9 @@ void FolderTreePanel::renderFolderChildren(
       bool open = ImGui::TreeNodeEx(label, ImGuiTreeNodeFlags_SpanAvailWidth);
       if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
         selectedFolder_ = f.id;
-        if (onSelect_)
+        if (onSelect_) {
           onSelect_(f.id);
+        }
       }
       if (open) {
         renderFolderChildren(f.id, byParent, counts);
@@ -62,13 +66,15 @@ void FolderTreePanel::renderFolderChildren(
       }
     } else {
       ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_SpanAvailWidth;
-      if (selectedFolder_ == f.id)
+      if (selectedFolder_ == f.id) {
         flags |= ImGuiTreeNodeFlags_Selected;
+      }
       ImGui::TreeNodeEx(label, flags);
       if (ImGui::IsItemClicked()) {
         selectedFolder_ = f.id;
-        if (onSelect_)
+        if (onSelect_) {
           onSelect_(f.id);
+        }
       }
       ImGui::TreePop();
     }
@@ -82,13 +88,15 @@ void FolderTreePanel::render() {
   std::snprintf(allLabel, sizeof(allLabel), "All Photos  (%lld)", (long long)totalCount_);
   ImGuiTreeNodeFlags allFlags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_SpanAvailWidth |
                                 ImGuiTreeNodeFlags_NoTreePushOnOpen;
-  if (selectedFolder_ == 0)
+  if (selectedFolder_ == 0) {
     allFlags |= ImGuiTreeNodeFlags_Selected;
+  }
   ImGui::TreeNodeEx(allLabel, allFlags);
   if (ImGui::IsItemClicked()) {
     selectedFolder_ = 0;
-    if (onSelect_)
+    if (onSelect_) {
       onSelect_(0);
+    }
   }
 
   ImGui::Separator();
@@ -99,8 +107,9 @@ void FolderTreePanel::render() {
   } else {
     for (auto& vol : volumes_) {
       auto volFolders = repo_.listFolders(vol.id);
-      if (volFolders.empty())
+      if (volFolders.empty()) {
         continue;
+      }
 
       auto vByParent = groupByParent(volFolders);
 
