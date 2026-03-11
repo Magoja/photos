@@ -35,7 +35,15 @@ ctest --preset debug --output-on-failure  # run tests
 - LRU texture cache: 2000 slot cap; placeholder gray texture returned while async load is in flight
 
 ## Code style
-- **Single responsibility**: every function does exactly one thing. If a block of code inside a function needs an explanatory comment, extract it into a named helper instead.
+- **Single responsibility**: every function does exactly one thing.
+  Extract a block into a named helper if ANY of these apply:
+  (a) it needs an explanatory comment to understand;
+  (b) it performs a distinguishable named action (e.g. "toggle pick", "copy file", "parse timestamp");
+  (c) it could be tested independently.
+  Prefer private methods for class member access, free functions otherwise.
+- **`const` correctness**: mark every variable, parameter, and method `const` unless it must be
+  mutated. Use `const auto` for local variables by default; only drop `const` when assignment or
+  mutation is required. Mark member functions `const` when they do not modify object state.
 - **C++20 features**: prefer `std::ranges` / `std::views` algorithms over raw loops; use structured bindings, `std::span`, `std::format` (where available), and concepts/requires-clauses where they improve clarity. Avoid hand-rolled loops when a standard algorithm expresses intent more directly.
 - **Indentation**: 2 spaces (no tabs). Enforced by `.clang-format` at project root.
 - **Braces**: always use curly braces for `if`/`else`/`for`/`while` bodies, even single-line. Enforced by `.clang-format`.

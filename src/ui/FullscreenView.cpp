@@ -53,18 +53,23 @@ void FullscreenView::handleNavKeys() {
   }
 
   if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent) && currentId_ > 0) {
-    auto rec = repo_.findById(currentId_);
-    if (rec) {
-      int newPicked = rec->picked ? 0 : 1;
-      repo_.updatePicked(currentId_, newPicked);
-      if (pickChangedCb_) {
-        pickChangedCb_(currentId_, newPicked);
-      }
-      toastText_ = newPicked ? "Picked" : "Unpicked";
-      toastVisible_ = true;
-      toastTimeLeft_ = 1.2f;
-    }
+    togglePickCurrentPhoto(currentId_);
   }
+}
+
+void FullscreenView::togglePickCurrentPhoto(const int64_t photoId) {
+  const auto rec = repo_.findById(photoId);
+  if (!rec) {
+    return;
+  }
+  const int newPicked = rec->picked ? 0 : 1;
+  repo_.updatePicked(photoId, newPicked);
+  if (pickChangedCb_) {
+    pickChangedCb_(photoId, newPicked);
+  }
+  toastText_ = newPicked ? "Picked" : "Unpicked";
+  toastVisible_ = true;
+  toastTimeLeft_ = 1.2f;
 }
 
 void FullscreenView::handleZoomAndPan(const ImGuiIO& io) {

@@ -53,6 +53,7 @@ class FullscreenView {
   void resetView();
 
   void handleNavKeys();
+  void togglePickCurrentPhoto(int64_t photoId);
   void handleZoomAndPan(const ImGuiIO& io);
   void drawBackground(ImDrawList* dl, ImVec2 scrSz) const;
   void drawPhoto(ImDrawList* dl, ImVec2 scrSz) const;
