@@ -638,22 +638,19 @@ void EditView::render() {
   }
   ImGui::End();
 
-  // Dark overlay (background draw list — behind all ImGui windows)
-  ImDrawList* bgDl = ImGui::GetBackgroundDrawList();
-  bgDl->AddRectFilled({0.f, 0.f}, scr, IM_COL32(0, 0, 0, 230));
-
-  // Preview (foreground draw list — left area)
-  ImDrawList* fgDl = ImGui::GetForegroundDrawList();
+  // Overlay + preview drawn to foreground list — renders above all ImGui windows
+  ImDrawList* const fgDl = ImGui::GetForegroundDrawList();
+  fgDl->AddRectFilled({0.f, 0.f}, {previewW, scr.y}, IM_COL32(0, 0, 0, 230));
   drawPreview(fgDl, {0.f, 0.f}, {previewW, scr.y});
 
-  // Right control panel
+  // Right control panel — forced to front each frame
   ImGui::SetNextWindowPos({previewW, 0.f});
   ImGui::SetNextWindowSize({panelW, scr.y});
   ImGui::SetNextWindowBgAlpha(0.95f);
+  ImGui::SetNextWindowFocus();
   ImGui::Begin("##editpanel", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBringToFrontOnFocus |
-                 ImGuiWindowFlags_NoScrollbar);
+                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
 
   if (ImGui::BeginTabBar("##EditModeTab")) {
     const bool syncAdj  = tabSyncNeeded_ && mode_ == EditMode::Adjust;
