@@ -311,6 +311,12 @@ int main(int /*argc*/, char** /*argv*/) {
         fullscreen.open(grid.selectedId());
       }
 
+      // ── Handle D key to open edit mode from grid ──────────────────────────────
+      if (ImGui::IsKeyPressed(ImGuiKey_D) && !ImGui::GetIO().WantTextInput &&
+          grid.selectedId() > 0 && !editView.isOpen() && !fullscreen.isOpen()) {
+        editView.open(grid.selectedId());
+      }
+
       // ── Menu bar ─────────────────────────────────────────────────────
       if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
