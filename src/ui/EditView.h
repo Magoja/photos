@@ -48,9 +48,10 @@ class EditView {
   TextureManager&           texMgr_;
   MTLDevicePtr              device_;
 
-  bool     open_    = false;
-  int64_t  photoId_ = 0;
-  EditMode mode_    = EditMode::Adjust;
+  bool     open_        = false;
+  bool     justOpened_  = false;
+  int64_t  photoId_     = 0;
+  EditMode mode_        = EditMode::Adjust;
   bool     tabSyncNeeded_ = false;
 
   catalog::EditSettings settings_;  // live/working values

@@ -38,8 +38,9 @@ EditView::~EditView() {
 
 void EditView::open(int64_t photoId) {
   photoId_ = photoId;
-  open_    = true;
-  mode_    = EditMode::Adjust;
+  open_          = true;
+  justOpened_    = true;
+  mode_          = EditMode::Adjust;
   tabSyncNeeded_ = false;
   dragHandle_ = -1;
   aspectMode_ = 0;
@@ -622,7 +623,9 @@ void EditView::render() {
                  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
                  ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNav);
 
-  if (!io.WantTextInput) {
+  const bool skipKeys = justOpened_;
+  justOpened_ = false;
+  if (!io.WantTextInput && !skipKeys) {
     if (ImGui::IsKeyPressed(ImGuiKey_D)) {
       ImGui::End();
       close();
