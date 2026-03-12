@@ -162,7 +162,9 @@ int main(int /*argc*/, char** /*argv*/) {
   // ── Async thumbnail loader ─────────────────────────────────────────────────
   struct ThumbResult {
     int64_t pid;
-    std::vector<uint8_t> bytes;
+    std::vector<uint8_t> rgba;
+    int width = 0;
+    int height = 0;
   };
   std::mutex thumbMtx;
   std::queue<ThumbResult> thumbResQ;
@@ -177,8 +179,13 @@ int main(int /*argc*/, char** /*argv*/) {
           if (f) {
             std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)), {});
             if (!bytes.empty()) {
+              std::vector<uint8_t> rgba;
+              int w = 0, h = 0;
+              if (!ui::TextureManager::decodeJpeg(bytes, rgba, w, h)) {
+                return;
+              }
               std::lock_guard lk(thumbMtx);
-              thumbResQ.push({pid, std::move(bytes)});
+              thumbResQ.push({pid, std::move(rgba), w, h});
               return;
             }
           }
@@ -214,8 +221,13 @@ int main(int /*argc*/, char** /*argv*/) {
         }
         std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f2)), {});
         if (!bytes.empty()) {
+          std::vector<uint8_t> rgba;
+          int w = 0, h = 0;
+          if (!ui::TextureManager::decodeJpeg(bytes, rgba, w, h)) {
+            return;
+          }
           std::lock_guard lk(thumbMtx);
-          thumbResQ.push({pid, std::move(bytes)});
+          thumbResQ.push({pid, std::move(rgba), w, h});
         }
       });
   });
@@ -298,7 +310,7 @@ int main(int /*argc*/, char** /*argv*/) {
         }
         while (!local.empty()) {
           auto& r = local.front();
-          texMgr.upload(r.pid, r.bytes);
+          texMgr.uploadRgba(r.pid, r.rgba, r.width, r.height);
           local.pop();
         }
       }

@@ -107,6 +107,67 @@ MTLTexturePtr TextureManager::get(int64_t photoId) {
   return it->second.second.texture;
 }
 
+bool TextureManager::decodeJpeg(const std::vector<uint8_t>& jpegBytes,
+                                std::vector<uint8_t>& outRgba, int& outW, int& outH) {
+  tjhandle tj = tjInitDecompress();
+  if (!tj) {
+    return false;
+  }
+  int w = 0, h = 0, subsamp = 0, cs = 0;
+  if (tjDecompressHeader3(tj, jpegBytes.data(), (unsigned long)jpegBytes.size(), &w, &h, &subsamp,
+                          &cs) < 0) {
+    tjDestroy(tj);
+    return false;
+  }
+  outRgba.resize(w * h * 4);
+  if (tjDecompress2(tj, jpegBytes.data(), (unsigned long)jpegBytes.size(), outRgba.data(), w, 0, h,
+                    TJPF_RGBA, TJFLAG_FASTDCT) < 0) {
+    tjDestroy(tj);
+    return false;
+  }
+  tjDestroy(tj);
+  outW = w;
+  outH = h;
+  return true;
+}
+
+bool TextureManager::uploadRgba(int64_t photoId, const std::vector<uint8_t>& rgba, int w,
+                                int h) {
+  if (rgba.empty() || w <= 0 || h <= 0) {
+    return false;
+  }
+  id<MTLDevice> dev = (id<MTLDevice>)device_;
+  MTLTextureDescriptor* desc =
+    [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                                       width:w
+                                                      height:h
+                                                   mipmapped:NO];
+  desc.storageMode = MTLStorageModeShared;
+  desc.usage = MTLTextureUsageShaderRead;
+  id<MTLTexture> tex = [dev newTextureWithDescriptor:desc];
+  [tex replaceRegion:MTLRegionMake2D(0, 0, w, h)
+         mipmapLevel:0
+           withBytes:rgba.data()
+         bytesPerRow:w * 4];
+
+  std::lock_guard lk(mutex_);
+  auto it = lruMap_.find(photoId);
+  if (it != lruMap_.end()) {
+    id<MTLTexture> old = (id<MTLTexture>)it->second.second.texture;
+    if (old) {
+      [old release];
+    }
+    lruList_.erase(it->second.first);
+    lruMap_.erase(it);
+  }
+  while ((int)lruMap_.size() >= kLruMaxSlots) {
+    evictOldest();
+  }
+  lruList_.push_front(photoId);
+  lruMap_[photoId] = {lruList_.begin(), TextureEntry{photoId, (MTLTexturePtr)tex, w, h}};
+  return true;
+}
+
 bool TextureManager::upload(int64_t photoId, const std::vector<uint8_t>& jpegBytes) {
   int w = 0, h = 0;
   MTLTexturePtr tex = decodeAndCreate(jpegBytes, w, h);
