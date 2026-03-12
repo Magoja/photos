@@ -12,10 +12,12 @@ namespace ui {
 class FullscreenView {
  public:
   using PickChangedCb = std::function<void(int64_t photoId, int picked)>;
+  using OpenEditCb    = std::function<void(int64_t photoId)>;
 
   FullscreenView(catalog::PhotoRepository& repo, TextureManager& texMgr);
 
   void setPickChangedCallback(PickChangedCb cb) { pickChangedCb_ = std::move(cb); }
+  void setOpenEditCallback(OpenEditCb cb)        { openEditCb_    = std::move(cb); }
 
   // Set the list of photo IDs to navigate through
   void setPhotoList(std::vector<int64_t> ids, int64_t currentId);
@@ -34,6 +36,7 @@ class FullscreenView {
   catalog::PhotoRepository& repo_;
   TextureManager& texMgr_;
   PickChangedCb pickChangedCb_;
+  OpenEditCb    openEditCb_;
 
   std::vector<int64_t> photoIds_;
   int64_t currentId_ = 0;

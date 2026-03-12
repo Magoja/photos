@@ -322,6 +322,13 @@ void PhotoRepository::updateThumb(int64_t id, const std::string& path, int w, in
   s.step();
 }
 
+void PhotoRepository::updateEditSettings(int64_t id, const std::string& json) {
+  auto s = db_.prepare("UPDATE photos SET edit_settings=? WHERE id=?");
+  s.bind(1, json);
+  s.bind(2, id);
+  s.step();
+}
+
 // ── App settings ──────────────────────────────────────────────────────────────
 
 std::string PhotoRepository::getSetting(const std::string& key, const std::string& def) {

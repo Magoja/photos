@@ -33,6 +33,7 @@
 #include "ui/FolderTreePanel.h"
 #include "ui/FilterBar.h"
 #include "ui/FullscreenView.h"
+#include "ui/EditView.h"
 #include "ui/ImportDialog.h"
 #include "ui/ExportDialog.h"
 #include "ui/SettingsPanel.h"
@@ -152,6 +153,7 @@ int main(int /*argc*/, char** /*argv*/) {
   ui::FolderTreePanel folderPanel(repo);
   ui::FilterBar filterBar;
   ui::FullscreenView fullscreen(repo, texMgr);
+  ui::EditView editView(repo, thumbCache, texMgr, (MTLDevicePtr)device);
   ui::ImportDialog importDlg(db);
   ui::ExportDialog exportDlg(repo);
   ui::SettingsPanel settingsPanel(repo, dbPath);
@@ -224,6 +226,13 @@ int main(int /*argc*/, char** /*argv*/) {
   folderPanel.setOnSelect([&](int64_t fid) { grid.loadFolder(fid, filterBar.mode()); });
 
   fullscreen.setPickChangedCallback([&](int64_t /*pid*/, int /*picked*/) { grid.reload(); });
+
+  fullscreen.setOpenEditCallback([&](const int64_t photoId) {
+    if (!editView.isOpen()) {
+      editView.open(photoId);
+    }
+  });
+  editView.setSavedCallback([&](int64_t /*photoId*/) { grid.reload(); });
 
   importDlg.setDoneCallback([&]() {
     folderPanel.refresh();
@@ -416,6 +425,9 @@ int main(int /*argc*/, char** /*argv*/) {
 
       // ── Fullscreen overlay ────────────────────────────────────────────
       fullscreen.render();
+
+      // ── Edit overlay ──────────────────────────────────────────────────
+      editView.render();
 
       // ── Dialogs ───────────────────────────────────────────────────────
       importDlg.render();

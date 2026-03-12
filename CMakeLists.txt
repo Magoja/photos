@@ -78,6 +78,7 @@ set(UI_SOURCES
     src/ui/FolderTreePanel.cpp
     src/ui/FilterBar.cpp
     src/ui/FullscreenView.cpp
+    src/ui/EditView.mm
     src/ui/ImportDialog.cpp
     src/ui/ExportDialog.cpp
     src/ui/SettingsPanel.cpp

@@ -27,11 +27,13 @@ class ThumbnailCache {
   bool generate(int64_t photoId, const std::string& hash, const std::vector<uint8_t>& thumbJpeg,
                 PhotoRepository& repo);
 
+  // Resize JPEG to fit within maxDim×maxDim, preserving aspect ratio.
+  static std::vector<uint8_t> resizeJpeg(const std::vector<uint8_t>& src, int maxDim);
+
  private:
   std::string root_;
 
   std::string pathFor(const std::string& hash) const;
-  static std::vector<uint8_t> resizeJpeg(const std::vector<uint8_t>& src, int maxDim);
 };
 
 }  // namespace catalog

@@ -81,6 +81,7 @@ class PhotoRepository {
 
   void updatePicked(int64_t id, int picked);
   void updateThumb(int64_t id, const std::string& path, int w, int h, int64_t mtime);
+  void updateEditSettings(int64_t id, const std::string& json);
 
   // ── App settings ─────────────────────────────────────────────────────────
   std::string getSetting(const std::string& key, const std::string& def = "");
