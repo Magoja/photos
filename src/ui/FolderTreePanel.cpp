@@ -13,11 +13,9 @@ FolderTreePanel::FolderTreePanel(catalog::PhotoRepository& repo) : repo_(repo) {
 void FolderTreePanel::refresh() {
   volumes_ = repo_.listVolumes();
   folders_ = repo_.listFolders();
-  counts_.clear();
+  counts_ = repo_.allFolderPhotoCounts();
   totalCount_ = 0;
-  for (auto& f : folders_) {
-    int64_t c = repo_.folderPhotoCount(f.id);
-    counts_[f.id] = c;
+  for (const auto& [id, c] : counts_) {
     totalCount_ += c;
   }
 }

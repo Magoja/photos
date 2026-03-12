@@ -1,6 +1,7 @@
 #include "PhotoRepository.h"
 #include <spdlog/spdlog.h>
 #include <filesystem>
+#include <map>
 
 namespace catalog {
 
@@ -172,6 +173,15 @@ int64_t PhotoRepository::folderPhotoCount(int64_t folderId) {
     return s.getInt64(0);
   }
   return 0;
+}
+
+std::map<int64_t, int64_t> PhotoRepository::allFolderPhotoCounts() {
+  auto s = db_.prepare("SELECT folder_id, COUNT(*) FROM photos GROUP BY folder_id");
+  std::map<int64_t, int64_t> out;
+  while (s.step()) {
+    out[s.getInt64(0)] = s.getInt64(1);
+  }
+  return out;
 }
 
 // ── Photos ────────────────────────────────────────────────────────────────────

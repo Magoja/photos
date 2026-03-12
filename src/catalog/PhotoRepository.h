@@ -1,5 +1,6 @@
 #pragma once
 #include "Database.h"
+#include <map>
 #include <string>
 #include <vector>
 #include <optional>
@@ -67,6 +68,7 @@ class PhotoRepository {
   std::optional<FolderRecord> findFolder(const std::string& path);
   std::vector<FolderRecord> listFolders(int64_t volumeId = 0);
   int64_t folderPhotoCount(int64_t folderId);
+  std::map<int64_t, int64_t> allFolderPhotoCounts();
 
   // ── Photos ───────────────────────────────────────────────────────────────
   // Returns new photo id; throws DbError on UNIQUE(folder_id,filename) conflict
