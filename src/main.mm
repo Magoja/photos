@@ -106,11 +106,12 @@ int main(int /*argc*/, char** /*argv*/) {
   }
 
   // ── SDL2 ──────────────────────────────────────────────────────────────────
+  SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI, "0");   // suppress HID gamepad probing on macOS
+  SDL_SetHint(SDL_HINT_RENDER_DRIVER, "metal");
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
     spdlog::error("SDL_Init: {}", SDL_GetError());
     return 1;
   }
-  SDL_SetHint(SDL_HINT_RENDER_DRIVER, "metal");
 
   const int W = 1280, H = 800;
   SDL_Window* window =
