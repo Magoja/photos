@@ -626,6 +626,12 @@ void EditView::render() {
   const bool skipKeys = justOpened_;
   justOpened_ = false;
   if (!io.WantTextInput && !skipKeys) {
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+      settings_ = saved_;
+      ImGui::End();
+      close();
+      return;
+    }
     if (ImGui::IsKeyPressed(ImGuiKey_D)) {
       ImGui::End();
       close();
