@@ -296,6 +296,18 @@ void EditView::handleCropDrag(ImVec2 imgMin, ImVec2 imgMax) {
         break;
       }
     }
+    if (dragHandle_ == -1) {
+      const bool insideX = mp.x >= cx && mp.x <= cx + cw;
+      const bool insideY = mp.y >= cy && mp.y <= cy + ch;
+      if (insideX && insideY) {
+        dragHandle_ = 8;
+        dragStart_  = mp;
+        dragOrigX_  = settings_.crop.x;
+        dragOrigY_  = settings_.crop.y;
+        dragOrigW_  = settings_.crop.w;
+        dragOrigH_  = settings_.crop.h;
+      }
+    }
   }
 
   if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && dragHandle_ >= 0) {
@@ -321,6 +333,10 @@ void EditView::handleCropDrag(ImVec2 imgMin, ImVec2 imgMax) {
       case 5: ncx += dx; ncw -= dx; nch += dy; break;              // BL
       case 6: nch += dy; break;                                     // B
       case 7: ncw += dx; nch += dy; break;                         // BR
+      case 8:                                                       // Move
+        ncx = std::clamp(dragOrigX_ + dx, 0.f, 1.f - dragOrigW_);
+        ncy = std::clamp(dragOrigY_ + dy, 0.f, 1.f - dragOrigH_);
+        break;
     }
     ncx = std::clamp(ncx, 0.f, 0.99f);
     ncy = std::clamp(ncy, 0.f, 0.99f);
@@ -706,7 +722,7 @@ void EditView::render() {
     saveThread_.join();
     saving_ = false;
     saveDone_ = false;
-    texMgr_.evict(photoId_);
+    pendingEvictId_ = photoId_;
     if (savedCb_) {
       savedCb_(photoId_);
     }

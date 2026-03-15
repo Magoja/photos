@@ -36,6 +36,14 @@ class EditView {
 
   void setSavedCallback(SavedCb cb) { savedCb_ = std::move(cb); }
 
+  // Returns the photoId whose LRU texture should be evicted this frame, or 0 if none.
+  // Must be called before any grid AddImage calls to avoid use-after-free.
+  int64_t pollPendingEvict() noexcept {
+    const int64_t id = pendingEvictId_;
+    pendingEvictId_ = 0;
+    return id;
+  }
+
   void open(int64_t photoId);
   void close();
   bool isOpen() const { return open_; }
@@ -74,6 +82,7 @@ class EditView {
   std::thread       saveThread_;
 
   SavedCb savedCb_;
+  int64_t pendingEvictId_ = 0;
 
   // helpers
   bool loadSourcePixels(int64_t photoId);

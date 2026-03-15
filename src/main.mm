@@ -315,6 +315,11 @@ int main(int /*argc*/, char** /*argv*/) {
         }
       }
 
+      // ── Drain pending texture evictions (must precede grid AddImage calls) ──
+      if (const int64_t evictId = editView.pollPendingEvict(); evictId > 0) {
+        texMgr.evict(evictId);
+      }
+
       // ── Handle F key to open fullscreen ──────────────────────────────
       if (ImGui::IsKeyPressed(ImGuiKey_F) && !ImGui::GetIO().WantTextInput &&
           grid.selectedId() > 0 && !fullscreen.isOpen()) {
