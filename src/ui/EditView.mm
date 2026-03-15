@@ -17,6 +17,27 @@
 
 namespace fs = std::filesystem;
 
+namespace {
+using namespace std::string_view_literals;
+
+enum class AspectConstraint { Free, Original, Fixed };
+
+struct AspectRatio {
+  std::string_view label;
+  AspectConstraint constraint;
+  float            ratio = 1.f;  // only used when constraint == Fixed
+};
+constexpr std::array<AspectRatio, 7> kAspectRatios = {{
+  {"Free"sv,     AspectConstraint::Free},
+  {"Original"sv, AspectConstraint::Original},
+  {"1:1"sv,      AspectConstraint::Fixed, 1.f/1.f},
+  {"2:3"sv,      AspectConstraint::Fixed, 2.f/3.f},
+  {"3:2"sv,      AspectConstraint::Fixed, 3.f/2.f},
+  {"4:6"sv,      AspectConstraint::Fixed, 4.f/6.f},
+  {"6:4"sv,      AspectConstraint::Fixed, 6.f/4.f},
+}};
+}  // namespace
+
 namespace ui {
 
 // ── Constructor / Destructor ──────────────────────────────────────────────────
@@ -49,8 +70,12 @@ void EditView::open(int64_t photoId) {
   const auto rec = repo_.findById(photoId);
   if (rec) {
     settings_ = catalog::EditSettings::fromJson(rec->editSettings);
+    origW_ = rec->widthPx;
+    origH_ = rec->heightPx;
   } else {
     settings_ = {};
+    origW_ = 0;
+    origH_ = 0;
   }
   saved_ = settings_;
 
@@ -288,24 +313,55 @@ void EditView::rebuildPreviewTexture() {
 
 // ── Crop constraint ───────────────────────────────────────────────────────────
 
-void EditView::applyCropConstraint() {
-  if (aspectMode_ == 0) {
-    return;  // Free
+void EditView::applyCropConstraint(int handle) {
+  const AspectConstraint c = kAspectRatios[aspectMode_].constraint;
+  if (c == AspectConstraint::Free) {
+    return;
   }
-  const float ratios[] = {0.f, 1.f/1.f, 2.f/3.f, 3.f/2.f, 4.f/5.f, 16.f/9.f};
-  const float target = ratios[aspectMode_];
-  float& cx = settings_.crop.x;
-  float& cy = settings_.crop.y;
-  float& cw = settings_.crop.w;
-  float& ch = settings_.crop.h;
-  float newH = cw / target;
-  if (newH + cy > 1.f) {
-    newH = 1.f - cy;
-    cw = newH * target;
+  const float target = (c == AspectConstraint::Original)
+    ? ((origW_ > 0 && origH_ > 0)
+         ? static_cast<float>(origW_) / static_cast<float>(origH_)
+         : static_cast<float>(srcW_)  / static_cast<float>(srcH_))  // fallback
+    : kAspectRatios[aspectMode_].ratio;
+
+  float& ncx = settings_.crop.x;
+  float& ncy = settings_.crop.y;
+  float& ncw = settings_.crop.w;
+  float& nch = settings_.crop.h;
+
+  if (handle == -1) {
+    // Mode-switch: fit the constrained box inside the current crop without overflow.
+    const float candidate_h = ncw / target;
+    if (candidate_h <= nch) {
+      nch = candidate_h;      // shrink height to match width
+    } else {
+      ncw = nch * target;     // shrink width to match height
+    }
+  } else {
+    // Drag: derive from the axis determined by handle.
+    const bool deriveHeightFromWidth = (handle != 3 && handle != 4 && handle != 5);
+    if (deriveHeightFromWidth) { nch = ncw / target; }
+    else                        { ncw = nch * target; }
   }
-  ch = newH;
-  cw = std::clamp(cw, 0.01f, 1.f - cx);
-  ch = std::clamp(ch, 0.01f, 1.f - cy);
+
+  // Fix position so the anchor corner stays put (skip when called from mode-switch, handle == -1).
+  if (handle >= 0) {
+    const float anchorRight  = dragOrigX_ + dragOrigW_;
+    const float anchorBottom = dragOrigY_ + dragOrigH_;
+    if (handle == 0 || handle == 3 || handle == 5) { ncx = anchorRight  - ncw; }
+    if (handle == 0 || handle == 1 || handle == 2) { ncy = anchorBottom - nch; }
+  }
+
+  ncx = std::clamp(ncx, 0.f, 0.99f);
+  ncy = std::clamp(ncy, 0.f, 0.99f);
+  ncw = std::clamp(ncw, 0.01f, 1.f - ncx);
+  nch = ncw / target;                          // re-derive after width clamp
+  nch = std::clamp(nch, 0.01f, 1.f - ncy);
+  // If height hit minimum, re-derive width from the (now clamped) height.
+  if (nch <= 0.01f + 1e-4f) {
+    ncw = nch * target;
+    ncw = std::clamp(ncw, 0.01f, 1.f - ncx);
+  }
 }
 
 // ── Crop overlay rendering ────────────────────────────────────────────────────
@@ -427,7 +483,7 @@ void EditView::handleCropDrag(ImVec2 imgMin, ImVec2 imgMax) {
     ncy = std::clamp(ncy, 0.f, 0.99f);
     ncw = std::clamp(ncw, 0.01f, 1.f - ncx);
     nch = std::clamp(nch, 0.01f, 1.f - ncy);
-    applyCropConstraint();
+    applyCropConstraint(dragHandle_);
     previewDirty_ = true;
   }
 
@@ -471,17 +527,17 @@ void EditView::renderAdjustPanel() {
 }
 
 void EditView::renderCropPanel() {
-  const char* const aspectLabels[] = {"Free", "1:1", "2:3", "3:2", "4:5", "16:9"};
-  for (int i = 0; i < 6; ++i) {
-    if (ImGui::RadioButton(aspectLabels[i], aspectMode_ == i)) {
+  const float itemH = ImGui::GetTextLineHeightWithSpacing();
+  const float listH = itemH * static_cast<float>(kAspectRatios.size()) + 4.f;
+  ImGui::BeginChild("##aspect_list", ImVec2(120.f, listH), true);
+  for (int i = 0; i < static_cast<int>(kAspectRatios.size()); ++i) {
+    if (ImGui::Selectable(kAspectRatios[i].label.data(), aspectMode_ == i)) {
       aspectMode_ = i;
-      applyCropConstraint();
+      applyCropConstraint(-1);
       previewDirty_ = true;
     }
-    if (i < 5) {
-      ImGui::SameLine();
-    }
   }
+  ImGui::EndChild();
   ImGui::Separator();
   ImGui::Text("Straighten");
   ImGui::SameLine();

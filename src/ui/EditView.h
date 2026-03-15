@@ -67,11 +67,12 @@ class EditView {
 
   std::vector<uint8_t> originalRgb_;
   int srcW_ = 0, srcH_ = 0;
+  int origW_ = 0, origH_ = 0;  // original photo dimensions from EXIF (DB widthPx/heightPx)
 
   MTLTexturePtr previewTex_   = nullptr;
   bool          previewDirty_ = false;
 
-  int    aspectMode_ = 0;  // 0=Free,1=1:1,2=2:3,3=3:2,4=4:5,5=16:9
+  int    aspectMode_ = 0;  // 0=Free,1=Original,2=1:1,3=2:3,4=3:2,5=4:6,6=6:4
   int    dragHandle_ = -1;
   ImVec2 dragStart_  = {};
   float  dragOrigX_ = 0.f, dragOrigY_ = 0.f;
@@ -93,7 +94,7 @@ class EditView {
       const std::vector<uint8_t>& src, int w, int h,
       const catalog::EditSettings& s) const;
 
-  void applyCropConstraint();
+  void applyCropConstraint(int handle);
   void renderCropOverlay(ImDrawList* dl, ImVec2 imgMin, ImVec2 imgMax) const;
   void handleCropDrag(ImVec2 imgMin, ImVec2 imgMax);
 
