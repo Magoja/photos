@@ -48,6 +48,19 @@ static std::vector<uint8_t> rgbToRgba(const std::vector<uint8_t>& rgb, int pixel
   return rgba;
 }
 
+static std::array<ImVec2, 8> cropHandlePositions(float cx, float cy, float cw, float ch) {
+  return {{
+    {cx,      cy},        // TL
+    {cx+cw/2, cy},        // T
+    {cx+cw,   cy},        // TR
+    {cx,      cy+ch/2},   // L
+    {cx+cw,   cy+ch/2},   // R
+    {cx,      cy+ch},     // BL
+    {cx+cw/2, cy+ch},     // B
+    {cx+cw,   cy+ch},     // BR
+  }};
+}
+
 static id<MTLTexture> rgbaToTexture(id<MTLDevice> dev,
                                     const std::vector<uint8_t>& rgba, int w, int h) {
   MTLTextureDescriptor* desc =
@@ -401,17 +414,7 @@ void EditView::renderCropOverlay(ImDrawList* dl, ImVec2 imgMin, ImVec2 imgMax) c
   // White crop border
   dl->AddRect({cx, cy}, {cx+cw, cy+ch}, IM_COL32_WHITE, 0.f, 0, 1.5f);
 
-  // 8 handles
-  const ImVec2 handles[8] = {
-    {cx,      cy},       // TL
-    {cx+cw/2, cy},       // T
-    {cx+cw,   cy},       // TR
-    {cx,      cy+ch/2},  // L
-    {cx+cw,   cy+ch/2},  // R
-    {cx,      cy+ch},    // BL
-    {cx+cw/2, cy+ch},    // B
-    {cx+cw,   cy+ch},    // BR
-  };
+  const auto handles = cropHandlePositions(cx, cy, cw, ch);
   for (const auto& h : handles) {
     dl->AddRectFilled({h.x-6.f, h.y-6.f}, {h.x+6.f, h.y+6.f}, IM_COL32_WHITE);
   }
@@ -433,16 +436,7 @@ void EditView::handleCropDrag(ImVec2 imgMin, ImVec2 imgMax) {
   const float cw = settings_.crop.w * imgW;
   const float ch = settings_.crop.h * imgH;
 
-  const ImVec2 handles[8] = {
-    {cx,      cy},
-    {cx+cw/2, cy},
-    {cx+cw,   cy},
-    {cx,      cy+ch/2},
-    {cx+cw,   cy+ch/2},
-    {cx,      cy+ch},
-    {cx+cw/2, cy+ch},
-    {cx+cw,   cy+ch},
-  };
+  const auto handles = cropHandlePositions(cx, cy, cw, ch);
 
   if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
     const ImVec2 mp = ImGui::GetMousePos();
