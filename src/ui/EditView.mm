@@ -33,8 +33,6 @@ constexpr std::array<AspectRatio, 7> kAspectRatios = {{
   {"1:1"sv,      AspectConstraint::Fixed, 1.f/1.f},
   {"2:3"sv,      AspectConstraint::Fixed, 2.f/3.f},
   {"3:2"sv,      AspectConstraint::Fixed, 3.f/2.f},
-  {"4:6"sv,      AspectConstraint::Fixed, 4.f/6.f},
-  {"6:4"sv,      AspectConstraint::Fixed, 6.f/4.f},
 }};
 }  // namespace
 
@@ -272,8 +270,9 @@ void EditView::rebuildPreviewTexture() {
   }
   const auto edited = applyEditsToPixels(originalRgb_, srcW_, srcH_, settings_);
 
-  // Crop mode shows the full image so the overlay handles are meaningful.
-  // Adjust mode shows only the cropped region so sliders reflect the final result.
+  // Crop mode shows the full image so overlay handles are meaningful, but applies
+  // rotation so the straighten slider gives live feedback.
+  // Adjust mode shows only the cropped+rotated region so sliders reflect the final result.
   int previewW = srcW_, previewH = srcH_;
   const std::vector<uint8_t>* pixels = &edited;
   std::vector<uint8_t> croppedBuf;
@@ -406,6 +405,12 @@ void EditView::renderCropOverlay(ImDrawList* dl, ImVec2 imgMin, ImVec2 imgMax) c
   };
   for (const auto& h : handles) {
     dl->AddRectFilled({h.x-6.f, h.y-6.f}, {h.x+6.f, h.y+6.f}, IM_COL32_WHITE);
+  }
+
+  // Horizontal center guideline — visible while the straighten slider is dragged
+  if (straightenDragging_) {
+    const float midY = (imgMin.y + imgMax.y) * 0.5f;
+    dl->AddLine({imgMin.x, midY}, {imgMax.x, midY}, IM_COL32(255, 255, 100, 200), 1.f);
   }
 }
 
@@ -565,14 +570,15 @@ void EditView::renderStraightenBar(float previewW, float screenH) {
   ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 18.f);
   ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.f, 8.f));
   if (ImGui::SliderFloat("##straighten", &settings_.crop.angleDeg, -45.f, 45.f, "%.1f°")) {
-    previewDirty_ = true;
+    // no previewDirty_ — rotation applied via AddImageQuad each frame
   }
+  straightenDragging_ = ImGui::IsItemActive();
   ImGui::PopStyleVar(2);
   ImGui::PopItemWidth();
   ImGui::SameLine(0.f, 12.f);
   if (ImGui::SmallButton("Reset")) {
     settings_.crop.angleDeg = 0.f;
-    previewDirty_ = true;
+    // no previewDirty_ — rotation applied via AddImageQuad each frame
   }
 
   ImGui::End();
@@ -608,7 +614,23 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
   };
   const ImVec2 imgMax = {imgMin.x + imgW, imgMin.y + imgH};
 
-  dl->AddImage(reinterpret_cast<ImTextureID>(previewTex_), imgMin, imgMax);
+  if (mode_ == EditMode::Crop && settings_.crop.angleDeg != 0.f) {
+    const float angleRad = settings_.crop.angleDeg * (float)(M_PI / 180.0);
+    const float cosA = cosf(angleRad), sinA = sinf(angleRad);
+    const ImVec2 center = {(imgMin.x + imgMax.x) * 0.5f,
+                           (imgMin.y + imgMax.y) * 0.5f};
+    const auto rotPt = [&](float px, float py) -> ImVec2 {
+      const float dx = px - center.x, dy = py - center.y;
+      return {center.x + dx * cosA - dy * sinA,
+              center.y + dx * sinA + dy * cosA};
+    };
+    dl->AddImageQuad(reinterpret_cast<ImTextureID>(previewTex_),
+                     rotPt(imgMin.x, imgMin.y), rotPt(imgMax.x, imgMin.y),
+                     rotPt(imgMax.x, imgMax.y), rotPt(imgMin.x, imgMax.y),
+                     {0, 0}, {1, 0}, {1, 1}, {0, 1});
+  } else {
+    dl->AddImage(reinterpret_cast<ImTextureID>(previewTex_), imgMin, imgMax);
+  }
 
   if (mode_ == EditMode::Crop) {
     renderCropOverlay(dl, imgMin, imgMax);
@@ -779,11 +801,15 @@ void EditView::render() {
     renderStraightenBar(previewW, scr.y);
   }
 
-  // Right control panel — forced to front each frame
+  // Right control panel — forced to front each frame, but only when no item is
+  // being dragged.  SetNextWindowFocus() → FocusWindow() → SetActiveID(0) which
+  // would kill an in-progress slider drag on the straighten bar every frame.
   ImGui::SetNextWindowPos({previewW, 0.f});
   ImGui::SetNextWindowSize({panelW, scr.y});
   ImGui::SetNextWindowBgAlpha(0.95f);
-  ImGui::SetNextWindowFocus();
+  if (!ImGui::IsAnyItemActive()) {
+    ImGui::SetNextWindowFocus();
+  }
   ImGui::Begin("##editpanel", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
