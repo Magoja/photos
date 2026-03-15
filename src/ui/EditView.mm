@@ -318,11 +318,19 @@ void EditView::applyCropConstraint(int handle) {
   if (c == AspectConstraint::Free) {
     return;
   }
-  const float target = (c == AspectConstraint::Original)
+  // Desired aspect ratio in PIXEL space (width / height).
+  const float physicalTarget = (c == AspectConstraint::Original)
     ? ((origW_ > 0 && origH_ > 0)
          ? static_cast<float>(origW_) / static_cast<float>(origH_)
          : static_cast<float>(srcW_)  / static_cast<float>(srcH_))  // fallback
     : kAspectRatios[aspectMode_].ratio;
+
+  // Convert to NORMALIZED space: ncw/nch = physicalTarget / srcAspect.
+  // The crop coords are fractions of srcW_/srcH_, so physical = normalized * srcAspect.
+  const float srcAspect = (srcW_ > 0 && srcH_ > 0)
+    ? static_cast<float>(srcW_) / static_cast<float>(srcH_)
+    : 1.f;
+  const float target = physicalTarget / srcAspect;
 
   float& ncx = settings_.crop.x;
   float& ncy = settings_.crop.y;
