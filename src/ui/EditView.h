@@ -106,6 +106,7 @@ class EditView {
 
   void renderAdjustPanel();
   void renderCropPanel();
+  void renderStraightenBar(float previewW, float screenH);
   bool renderSliderRow(const char* label, float* v,
                        float vmin, float vmax, float step);
   void drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax);

@@ -546,14 +546,36 @@ void EditView::renderCropPanel() {
     }
   }
   ImGui::EndChild();
-  ImGui::Separator();
+}
+
+void EditView::renderStraightenBar(float previewW, float screenH) {
+  constexpr float kBarH = 64.f;
+  ImGui::SetNextWindowPos({0.f, screenH - kBarH});
+  ImGui::SetNextWindowSize({previewW, kBarH});
+  ImGui::SetNextWindowBgAlpha(0.75f);
+  ImGui::Begin("##straighten_bar", nullptr,
+               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar |
+                 ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoSavedSettings);
+
+  ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 8.f);
   ImGui::Text("Straighten");
-  ImGui::SameLine();
-  ImGui::PushItemWidth(180.f);
+  ImGui::SameLine(0.f, 12.f);
+  ImGui::PushItemWidth(previewW - 160.f);
+  ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 18.f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.f, 8.f));
   if (ImGui::SliderFloat("##straighten", &settings_.crop.angleDeg, -45.f, 45.f, "%.1f°")) {
     previewDirty_ = true;
   }
+  ImGui::PopStyleVar(2);
   ImGui::PopItemWidth();
+  ImGui::SameLine(0.f, 12.f);
+  if (ImGui::SmallButton("Reset")) {
+    settings_.crop.angleDeg = 0.f;
+    previewDirty_ = true;
+  }
+
+  ImGui::End();
 }
 
 // ── Preview drawing ───────────────────────────────────────────────────────────
@@ -745,10 +767,17 @@ void EditView::render() {
   }
   ImGui::End();
 
-  // Overlay + preview drawn to foreground list — renders above all ImGui windows
+  // Overlay + preview drawn to foreground list — renders above all ImGui windows.
+  // In Crop mode, reserve the bottom 64 px for the straighten bar.
+  constexpr float kStraightenBarH = 64.f;
+  const float previewAreaH = (mode_ == EditMode::Crop) ? scr.y - kStraightenBarH : scr.y;
   ImDrawList* const fgDl = ImGui::GetForegroundDrawList();
   fgDl->AddRectFilled({0.f, 0.f}, {previewW, scr.y}, IM_COL32(0, 0, 0, 230));
-  drawPreview(fgDl, {0.f, 0.f}, {previewW, scr.y});
+  drawPreview(fgDl, {0.f, 0.f}, {previewW, previewAreaH});
+
+  if (mode_ == EditMode::Crop) {
+    renderStraightenBar(previewW, scr.y);
+  }
 
   // Right control panel — forced to front each frame
   ImGui::SetNextWindowPos({previewW, 0.f});
