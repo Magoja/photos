@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numbers>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -30,7 +31,7 @@ struct AspectRatio {
 constexpr std::array<AspectRatio, 5> kAspectRatios = {{
   {"Free"sv,     AspectConstraint::Free},
   {"Original"sv, AspectConstraint::Original},
-  {"1:1"sv,      AspectConstraint::Fixed, 1.f/1.f},
+  {"1:1"sv,      AspectConstraint::Fixed, 1.f},
   {"2:3"sv,      AspectConstraint::Fixed, 2.f/3.f},
   {"3:2"sv,      AspectConstraint::Fixed, 3.f/2.f},
 }};
@@ -569,16 +570,13 @@ void EditView::renderStraightenBar(float previewW, float screenH) {
   ImGui::PushItemWidth(previewW - 160.f);
   ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 18.f);
   ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.f, 8.f));
-  if (ImGui::SliderFloat("##straighten", &settings_.crop.angleDeg, -45.f, 45.f, "%.1f°")) {
-    // no previewDirty_ — rotation applied via AddImageQuad each frame
-  }
+  ImGui::SliderFloat("##straighten", &settings_.crop.angleDeg, -45.f, 45.f, "%.1f°");
   straightenDragging_ = ImGui::IsItemActive();
   ImGui::PopStyleVar(2);
   ImGui::PopItemWidth();
   ImGui::SameLine(0.f, 12.f);
   if (ImGui::SmallButton("Reset")) {
     settings_.crop.angleDeg = 0.f;
-    // no previewDirty_ — rotation applied via AddImageQuad each frame
   }
 
   ImGui::End();
@@ -615,7 +613,7 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
   const ImVec2 imgMax = {imgMin.x + imgW, imgMin.y + imgH};
 
   if (mode_ == EditMode::Crop && settings_.crop.angleDeg != 0.f) {
-    const float angleRad = settings_.crop.angleDeg * (float)(M_PI / 180.0);
+    const float angleRad = settings_.crop.angleDeg * (std::numbers::pi_v<float> / 180.f);
     const float cosA = cosf(angleRad), sinA = sinf(angleRad);
     const ImVec2 center = {(imgMin.x + imgMax.x) * 0.5f,
                            (imgMin.y + imgMax.y) * 0.5f};
