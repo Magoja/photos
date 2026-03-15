@@ -868,7 +868,11 @@ void EditView::render() {
     if (savedCb_) {
       savedCb_(photoId_);
     }
-    close();
+    if (mode_ == EditMode::Crop) {
+      saved_ = settings_;  // update Cancel baseline; stay in edit view
+    } else {
+      close();
+    }
   }
 }
 
