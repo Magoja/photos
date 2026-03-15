@@ -247,20 +247,26 @@ void EditView::rebuildPreviewTexture() {
   }
   const auto edited = applyEditsToPixels(originalRgb_, srcW_, srcH_, settings_);
 
-  // Apply crop + straighten so Adjust mode shows the final cropped result
-  int previewW = 0, previewH = 0;
-  const auto cropped = cropAndRotatePixels(edited, srcW_, srcH_, settings_.crop,
-                                           previewW, previewH);
+  // Crop mode shows the full image so the overlay handles are meaningful.
+  // Adjust mode shows only the cropped region so sliders reflect the final result.
+  int previewW = srcW_, previewH = srcH_;
+  const std::vector<uint8_t>* pixels = &edited;
+  std::vector<uint8_t> croppedBuf;
+  if (mode_ == EditMode::Adjust) {
+    croppedBuf = cropAndRotatePixels(edited, srcW_, srcH_, settings_.crop,
+                                     previewW, previewH);
+    pixels = &croppedBuf;
+  }
 
   releasePreviewTex();
 
-  // cropped is RGB; convert to RGBA
+  // Convert RGB → RGBA
   std::vector<uint8_t> rgba;
   rgba.reserve(previewW * previewH * 4);
   for (int i = 0; i < previewW * previewH; ++i) {
-    rgba.push_back(cropped[i*3+0]);
-    rgba.push_back(cropped[i*3+1]);
-    rgba.push_back(cropped[i*3+2]);
+    rgba.push_back((*pixels)[i*3+0]);
+    rgba.push_back((*pixels)[i*3+1]);
+    rgba.push_back((*pixels)[i*3+2]);
     rgba.push_back(255);
   }
 
@@ -696,12 +702,14 @@ void EditView::render() {
 
     if (ImGui::BeginTabItem("Adjust", nullptr,
                             syncAdj ? ImGuiTabItemFlags_SetSelected : 0)) {
+      if (mode_ != EditMode::Adjust) { previewDirty_ = true; }
       mode_ = EditMode::Adjust;
       renderAdjustPanel();
       ImGui::EndTabItem();
     }
     if (ImGui::BeginTabItem("Crop", nullptr,
                             syncCrop ? ImGuiTabItemFlags_SetSelected : 0)) {
+      if (mode_ != EditMode::Crop) { previewDirty_ = true; }
       mode_ = EditMode::Crop;
       renderCropPanel();
       ImGui::EndTabItem();
