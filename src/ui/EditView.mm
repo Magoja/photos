@@ -35,6 +35,36 @@ constexpr std::array<AspectRatio, 5> kAspectRatios = {{
   {"2:3"sv,      AspectConstraint::Fixed, 2.f/3.f},
   {"3:2"sv,      AspectConstraint::Fixed, 3.f/2.f},
 }};
+
+static std::vector<uint8_t> rgbToRgba(const std::vector<uint8_t>& rgb, int pixelCount) {
+  std::vector<uint8_t> rgba;
+  rgba.reserve(pixelCount * 4);
+  for (int i = 0; i < pixelCount; ++i) {
+    rgba.push_back(rgb[i*3+0]);
+    rgba.push_back(rgb[i*3+1]);
+    rgba.push_back(rgb[i*3+2]);
+    rgba.push_back(255);
+  }
+  return rgba;
+}
+
+static id<MTLTexture> rgbaToTexture(id<MTLDevice> dev,
+                                    const std::vector<uint8_t>& rgba, int w, int h) {
+  MTLTextureDescriptor* desc =
+    [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                                       width:w
+                                                      height:h
+                                                   mipmapped:NO];
+  desc.storageMode = MTLStorageModeShared;
+  desc.usage = MTLTextureUsageShaderRead;
+  id<MTLTexture> tex = [dev newTextureWithDescriptor:desc];
+  [tex replaceRegion:MTLRegionMake2D(0, 0, w, h)
+         mipmapLevel:0
+           withBytes:rgba.data()
+         bytesPerRow:w * 4];
+  return tex;
+}
+
 }  // namespace
 
 namespace ui {
@@ -285,30 +315,8 @@ void EditView::rebuildPreviewTexture() {
 
   releasePreviewTex();
 
-  // Convert RGB → RGBA
-  std::vector<uint8_t> rgba;
-  rgba.reserve(previewW * previewH * 4);
-  for (int i = 0; i < previewW * previewH; ++i) {
-    rgba.push_back((*pixels)[i*3+0]);
-    rgba.push_back((*pixels)[i*3+1]);
-    rgba.push_back((*pixels)[i*3+2]);
-    rgba.push_back(255);
-  }
-
-  id<MTLDevice> dev = (id<MTLDevice>)device_;
-  MTLTextureDescriptor* desc =
-    [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-                                                       width:previewW
-                                                      height:previewH
-                                                   mipmapped:NO];
-  desc.storageMode = MTLStorageModeShared;
-  desc.usage = MTLTextureUsageShaderRead;
-  id<MTLTexture> tex = [dev newTextureWithDescriptor:desc];
-  [tex replaceRegion:MTLRegionMake2D(0, 0, previewW, previewH)
-         mipmapLevel:0
-           withBytes:rgba.data()
-         bytesPerRow:previewW * 4];
-  previewTex_ = tex;
+  const auto rgba = rgbToRgba(*pixels, previewW * previewH);
+  previewTex_ = rgbaToTexture((id<MTLDevice>)device_, rgba, previewW, previewH);
 }
 
 // ── Crop constraint ───────────────────────────────────────────────────────────
