@@ -772,7 +772,7 @@ void EditView::render() {
   constexpr float kStraightenBarH = 64.f;
   const float previewAreaH = (mode_ == EditMode::Crop) ? scr.y - kStraightenBarH : scr.y;
   ImDrawList* const fgDl = ImGui::GetForegroundDrawList();
-  fgDl->AddRectFilled({0.f, 0.f}, {previewW, scr.y}, IM_COL32(0, 0, 0, 230));
+  fgDl->AddRectFilled({0.f, 0.f}, {previewW, previewAreaH}, IM_COL32(0, 0, 0, 230));
   drawPreview(fgDl, {0.f, 0.f}, {previewW, previewAreaH});
 
   if (mode_ == EditMode::Crop) {
