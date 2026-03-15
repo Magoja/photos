@@ -27,14 +27,12 @@ struct AspectRatio {
   AspectConstraint constraint;
   float            ratio = 1.f;  // only used when constraint == Fixed
 };
-constexpr std::array<AspectRatio, 7> kAspectRatios = {{
+constexpr std::array<AspectRatio, 5> kAspectRatios = {{
   {"Free"sv,     AspectConstraint::Free},
   {"Original"sv, AspectConstraint::Original},
   {"1:1"sv,      AspectConstraint::Fixed, 1.f/1.f},
   {"2:3"sv,      AspectConstraint::Fixed, 2.f/3.f},
   {"3:2"sv,      AspectConstraint::Fixed, 3.f/2.f},
-  {"4:6"sv,      AspectConstraint::Fixed, 4.f/6.f},
-  {"6:4"sv,      AspectConstraint::Fixed, 6.f/4.f},
 }};
 }  // namespace
 
