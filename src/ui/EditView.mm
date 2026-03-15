@@ -136,29 +136,19 @@ bool EditView::loadSourcePixels(int64_t photoId) {
   srcW_ = 0;
   srcH_ = 0;
 
-  // Fast path: read thumb from disk
-  std::vector<uint8_t> jpegBytes;
-  const std::string thumbPath = repo_.getThumbPath(photoId);
-  if (!thumbPath.empty()) {
-    std::ifstream f(thumbPath, std::ios::binary);
-    if (f) {
-      jpegBytes.assign(std::istreambuf_iterator<char>(f), {});
-    }
+  // Always decode from the original source file so we get unedited pixels.
+  // thumb_path may point to an edit-baked thumbnail (regenThumbnail overwrites
+  // it), which would cause double-application of exposure/color adjustments.
+  const auto rec = repo_.findById(photoId);
+  if (!rec) {
+    return false;
   }
-
-  // Slow path: decode from source file
-  if (jpegBytes.empty()) {
-    const auto rec = repo_.findById(photoId);
-    if (!rec) {
-      return false;
-    }
-    const std::string srcPath = repo_.fullPathFor(rec->folderId, rec->filename);
-    const auto dec = import_ns::RawDecoder::decode(srcPath);
-    if (!dec.ok || dec.thumbJpeg.empty()) {
-      return false;
-    }
-    jpegBytes = dec.thumbJpeg;
+  const std::string srcPath = repo_.fullPathFor(rec->folderId, rec->filename);
+  const auto dec = import_ns::RawDecoder::decode(srcPath);
+  if (!dec.ok || dec.thumbJpeg.empty()) {
+    return false;
   }
+  const std::vector<uint8_t>& jpegBytes = dec.thumbJpeg;
 
   // Decompress JPEG → RGB
   tjhandle tj = tjInitDecompress();
