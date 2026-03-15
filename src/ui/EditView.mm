@@ -159,6 +159,79 @@ std::vector<uint8_t> EditView::applyEditsToPixels(
   return dst;
 }
 
+// ── Crop/rotate helpers ───────────────────────────────────────────────────────
+
+static std::vector<uint8_t> rotateCropBuffer(const std::vector<uint8_t>& src,
+                                              int w, int h, float angleDeg) {
+  if (angleDeg == 0.f) {
+    return src;
+  }
+  const float rad  = angleDeg * (float)M_PI / 180.f;
+  const float cosA = std::cos(-rad);
+  const float sinA = std::sin(-rad);
+  const float cx   = w * 0.5f;
+  const float cy   = h * 0.5f;
+
+  std::vector<uint8_t> dst(w * h * 3, 0);
+  for (int y = 0; y < h; ++y) {
+    for (int x = 0; x < w; ++x) {
+      const float dx = x - cx;
+      const float dy = y - cy;
+      const float sx = cosA * dx - sinA * dy + cx;
+      const float sy = sinA * dx + cosA * dy + cy;
+
+      const int x0 = (int)sx;
+      const int y0 = (int)sy;
+      const float fx = sx - x0;
+      const float fy = sy - y0;
+
+      auto sample = [&](int px, int py) -> std::array<float, 3> {
+        px = std::clamp(px, 0, w - 1);
+        py = std::clamp(py, 0, h - 1);
+        const int idx = (py * w + px) * 3;
+        return {(float)src[idx], (float)src[idx+1], (float)src[idx+2]};
+      };
+      const auto s00 = sample(x0,   y0);
+      const auto s10 = sample(x0+1, y0);
+      const auto s01 = sample(x0,   y0+1);
+      const auto s11 = sample(x0+1, y0+1);
+
+      const int outIdx = (y * w + x) * 3;
+      for (int c = 0; c < 3; ++c) {
+        const float val = s00[c]*(1.f-fx)*(1.f-fy) + s10[c]*fx*(1.f-fy)
+                        + s01[c]*(1.f-fx)*fy        + s11[c]*fx*fy;
+        dst[outIdx+c] = (uint8_t)std::clamp(val, 0.f, 255.f);
+      }
+    }
+  }
+  return dst;
+}
+
+// Returns the cropped-and-rotated RGB buffer; outW/outH receive its dimensions.
+static std::vector<uint8_t> cropAndRotatePixels(
+    const std::vector<uint8_t>& edited, int srcW, int srcH,
+    const catalog::CropRect& crop, int& outW, int& outH) {
+  const int cropX = (int)(crop.x * srcW);
+  const int cropY = (int)(crop.y * srcH);
+  outW = std::max(1, (int)(crop.w * srcW));
+  outH = std::max(1, (int)(crop.h * srcH));
+
+  std::vector<uint8_t> cropped(outW * outH * 3);
+  for (int y = 0; y < outH; ++y) {
+    const int srcRow = std::clamp(cropY + y, 0, srcH - 1);
+    const int dstOff = y * outW * 3;
+    const int srcOff = (srcRow * srcW + std::clamp(cropX, 0, srcW - 1)) * 3;
+    const int copyW  = std::min(outW, srcW - std::clamp(cropX, 0, srcW - 1));
+    if (copyW > 0) {
+      std::copy_n(edited.begin() + srcOff, copyW * 3, cropped.begin() + dstOff);
+    }
+  }
+  if (crop.angleDeg != 0.f) {
+    cropped = rotateCropBuffer(cropped, outW, outH, crop.angleDeg);
+  }
+  return cropped;
+}
+
 // ── Metal texture management ──────────────────────────────────────────────────
 
 void EditView::releasePreviewTex() {
@@ -173,31 +246,37 @@ void EditView::rebuildPreviewTexture() {
     return;
   }
   const auto edited = applyEditsToPixels(originalRgb_, srcW_, srcH_, settings_);
+
+  // Apply crop + straighten so Adjust mode shows the final cropped result
+  int previewW = 0, previewH = 0;
+  const auto cropped = cropAndRotatePixels(edited, srcW_, srcH_, settings_.crop,
+                                           previewW, previewH);
+
   releasePreviewTex();
 
-  // RGB → RGBA
+  // cropped is RGB; convert to RGBA
   std::vector<uint8_t> rgba;
-  rgba.reserve(srcW_ * srcH_ * 4);
-  for (int i = 0; i < srcW_ * srcH_; ++i) {
-    rgba.push_back(edited[i*3+0]);
-    rgba.push_back(edited[i*3+1]);
-    rgba.push_back(edited[i*3+2]);
+  rgba.reserve(previewW * previewH * 4);
+  for (int i = 0; i < previewW * previewH; ++i) {
+    rgba.push_back(cropped[i*3+0]);
+    rgba.push_back(cropped[i*3+1]);
+    rgba.push_back(cropped[i*3+2]);
     rgba.push_back(255);
   }
 
+  id<MTLDevice> dev = (id<MTLDevice>)device_;
   MTLTextureDescriptor* desc =
     [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-                                                       width:srcW_
-                                                      height:srcH_
+                                                       width:previewW
+                                                      height:previewH
                                                    mipmapped:NO];
   desc.storageMode = MTLStorageModeShared;
   desc.usage = MTLTextureUsageShaderRead;
-
-  id<MTLTexture> tex = [device_ newTextureWithDescriptor:desc];
-  [tex replaceRegion:MTLRegionMake2D(0, 0, srcW_, srcH_)
+  id<MTLTexture> tex = [dev newTextureWithDescriptor:desc];
+  [tex replaceRegion:MTLRegionMake2D(0, 0, previewW, previewH)
          mipmapLevel:0
            withBytes:rgba.data()
-         bytesPerRow:srcW_ * 4];
+         bytesPerRow:previewW * 4];
   previewTex_ = tex;
 }
 
@@ -420,7 +499,7 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
 
   const float areaW = (areaMax.x - areaMin.x) * 0.9f;
   const float areaH = (areaMax.y - areaMin.y) * 0.9f;
-  const float imgAspect  = (float)srcW_ / (float)srcH_;
+  const float imgAspect  = (float)previewTex_.width / (float)previewTex_.height;
   const float areaAspect = areaW / areaH;
 
   float imgW, imgH;
@@ -446,52 +525,6 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
 }
 
 // ── Background thumbnail save ─────────────────────────────────────────────────
-
-static std::vector<uint8_t> rotateCropBuffer(const std::vector<uint8_t>& src,
-                                              int w, int h, float angleDeg) {
-  if (angleDeg == 0.f) {
-    return src;
-  }
-  const float rad  = angleDeg * (float)M_PI / 180.f;
-  const float cosA = std::cos(-rad);
-  const float sinA = std::sin(-rad);
-  const float cx   = w * 0.5f;
-  const float cy   = h * 0.5f;
-
-  std::vector<uint8_t> dst(w * h * 3, 0);
-  for (int y = 0; y < h; ++y) {
-    for (int x = 0; x < w; ++x) {
-      const float dx = x - cx;
-      const float dy = y - cy;
-      const float sx = cosA * dx - sinA * dy + cx;
-      const float sy = sinA * dx + cosA * dy + cy;
-
-      const int x0 = (int)sx;
-      const int y0 = (int)sy;
-      const float fx = sx - x0;
-      const float fy = sy - y0;
-
-      auto sample = [&](int px, int py) -> std::array<float, 3> {
-        px = std::clamp(px, 0, w - 1);
-        py = std::clamp(py, 0, h - 1);
-        const int idx = (py * w + px) * 3;
-        return {(float)src[idx], (float)src[idx+1], (float)src[idx+2]};
-      };
-      const auto s00 = sample(x0,   y0);
-      const auto s10 = sample(x0+1, y0);
-      const auto s01 = sample(x0,   y0+1);
-      const auto s11 = sample(x0+1, y0+1);
-
-      const int outIdx = (y * w + x) * 3;
-      for (int c = 0; c < 3; ++c) {
-        const float val = s00[c]*(1.f-fx)*(1.f-fy) + s10[c]*fx*(1.f-fy)
-                        + s01[c]*(1.f-fx)*fy        + s11[c]*fx*fy;
-        dst[outIdx+c] = (uint8_t)std::clamp(val, 0.f, 255.f);
-      }
-    }
-  }
-  return dst;
-}
 
 void EditView::regenThumbnail(int64_t photoId,
                               catalog::EditSettings s,
@@ -529,27 +562,9 @@ void EditView::regenThumbnail(int64_t photoId,
   // Apply adjustments
   auto edited = applyEditsToPixels(rgb, srcW, srcH, s);
 
-  // Apply crop: extract sub-rect
-  const int cropX = (int)(s.crop.x * srcW);
-  const int cropY = (int)(s.crop.y * srcH);
-  const int cropW = std::max(1, (int)(s.crop.w * srcW));
-  const int cropH = std::max(1, (int)(s.crop.h * srcH));
-
-  std::vector<uint8_t> cropped(cropW * cropH * 3);
-  for (int y = 0; y < cropH; ++y) {
-    const int srcRow = std::clamp(cropY + y, 0, srcH - 1);
-    const int dstOff = y * cropW * 3;
-    const int srcOff = (srcRow * srcW + std::clamp(cropX, 0, srcW - 1)) * 3;
-    const int copyW  = std::min(cropW, srcW - std::clamp(cropX, 0, srcW - 1));
-    if (copyW > 0) {
-      std::copy_n(edited.begin() + srcOff, copyW * 3, cropped.begin() + dstOff);
-    }
-  }
-
-  // Apply straighten rotation if needed
-  if (s.crop.angleDeg != 0.f) {
-    cropped = rotateCropBuffer(cropped, cropW, cropH, s.crop.angleDeg);
-  }
+  // Apply crop + straighten
+  int cropW = 0, cropH = 0;
+  auto cropped = cropAndRotatePixels(edited, srcW, srcH, s.crop, cropW, cropH);
 
   // Encode cropped+edited buffer to JPEG
   tjhandle tjEnc = tjInitCompress();
