@@ -359,24 +359,24 @@ static std::vector<uint8_t> injectExifApp1(const std::vector<uint8_t>& jpeg,
 bool Exporter::exportOne(const PhotoRecord& rec, const std::string& destDir) {
   const std::string srcPath = repo_.fullPathFor(rec.folderId, rec.filename);
 
-  // 1. Full-res decode using LibRaw
-  LibRaw raw;
-  if (raw.open_file(srcPath.c_str()) != LIBRAW_SUCCESS) {
+  // 1. Full-res decode using LibRaw (heap-allocated: LibRaw is ~750 KB on stack)
+  auto raw = std::make_unique<LibRaw>();
+  if (raw->open_file(srcPath.c_str()) != LIBRAW_SUCCESS) {
     spdlog::warn("Export: LibRaw open failed for {}", srcPath);
     return false;
   }
-  if (raw.unpack() != LIBRAW_SUCCESS) {
+  if (raw->unpack() != LIBRAW_SUCCESS) {
     spdlog::warn("Export: LibRaw unpack failed for {}", srcPath);
     return false;
   }
-  raw.imgdata.params.output_bps = 8;
-  raw.imgdata.params.use_camera_wb = 1;
-  if (raw.dcraw_process() != LIBRAW_SUCCESS) {
+  raw->imgdata.params.output_bps = 8;
+  raw->imgdata.params.use_camera_wb = 1;
+  if (raw->dcraw_process() != LIBRAW_SUCCESS) {
     spdlog::warn("Export: LibRaw dcraw_process failed for {}", srcPath);
     return false;
   }
 
-  libraw_processed_image_t* img = raw.dcraw_make_mem_image();
+  libraw_processed_image_t* img = raw->dcraw_make_mem_image();
   if (!img || img->type != LIBRAW_IMAGE_BITMAP || img->colors != 3) {
     if (img) { LibRaw::dcraw_clear_mem(img); }
     spdlog::warn("Export: LibRaw image format unexpected for {}", srcPath);
