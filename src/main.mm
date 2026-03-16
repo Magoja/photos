@@ -342,6 +342,13 @@ int main(int /*argc*/, char** /*argv*/) {
         texMgr.evict(evictId);
       }
 
+      // ── Drain MetaSync thumbnail updates (evict stale LRU; upload edited RGBA) ──
+      for (auto& u : metaSyncDlg.takePendingThumbUpdates()) {
+        texMgr.evict(u.id);
+        texMgr.evict(u.id + ui::GridView::kMicroOffset);
+        texMgr.uploadRgba(u.id, u.rgba, u.w, u.h);
+      }
+
       // ── Global hotkeys: F = fullscreen, D = adjust, R = crop ────────
       // Each key closes the other UIs and opens its own, from any state.
       const bool noTextInput = !ImGui::GetIO().WantTextInput;

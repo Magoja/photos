@@ -12,6 +12,9 @@ class MetaSyncDialog {
  public:
   using DoneCb = std::function<void()>;
 
+  // Edited thumbnail ready for upload — drained by main loop before grid.render()
+  struct ThumbUpdate { int64_t id; std::vector<uint8_t> rgba; int w; int h; };
+
   MetaSyncDialog(catalog::PhotoRepository& repo, TextureManager& texMgr);
 
   void setDoneCallback(DoneCb cb) { doneCb_ = std::move(cb); }
@@ -22,6 +25,10 @@ class MetaSyncDialog {
 
   void render();
   bool isOpen() const { return open_; }
+
+  // Called by main loop at the top of each frame (before grid.render()).
+  // Returns pending texture updates produced by the last performSync().
+  std::vector<ThumbUpdate> takePendingThumbUpdates();
 
  private:
   catalog::PhotoRepository& repo_;
@@ -36,6 +43,8 @@ class MetaSyncDialog {
   // Persisted checkbox state between opens (static so they survive re-open)
   bool syncAdjust_ = true;
   bool syncCrop_   = false;
+
+  std::vector<ThumbUpdate> pendingThumbUpdates_;
 
   void performSync();
 };
