@@ -63,66 +63,77 @@ ctest --preset debug --output-on-failure  # run tests
                  ├─── 10 (Import UI)
                  ├─── 11 (Fullscreen) ─── (needs 2)
                  └─── 12 (Export)     ─── (needs 2)
+
+9 (Grid) ──── 16 (Multi-select) ─┬─ 17 (Meta Sync)
+                                  └─ 18 (Export v2)
 ```
 
 ## Tasks
 
-- [x] **Task 1 — Project scaffold & build system**
-  Files: `CMakeLists.txt`, `CMakePresets.json`, `cmake/CompilerFlags.cmake`, `src/main.mm`, `.gitmodules`, `.gitignore`
-  ✓ Verify: `cmake --preset debug && cmake --build build/debug` succeeds with 0 errors/warnings. Running the binary opens a window titled "Photo Library" that closes cleanly on Cmd+Q.
+- [ ] **Task 16 — Multi-selection in Grid**
+  Files: `src/ui/GridView.h/.cpp`, `src/main.mm`
 
-- [x] **Task 2 — Catalog database layer**
-  Files: `src/catalog/Database.h/.cpp`, `Schema.h/.cpp`, `PhotoRepository.h/.cpp`, `tests/test_database.cpp`
-  ✓ Verify: `ctest --preset debug` passes all DB tests. `EXPLAIN QUERY PLAN` for folder query shows `USING INDEX idx_photos_folder`. Insert of duplicate (folder_id, filename) throws/returns error.
+  - Replace `int64_t selectedId_` with `int64_t primaryId_` + `std::unordered_set<int64_t> selectedIds_`
+  - Click (no modifier): clear selection, set new primary → same behavior as today for single-photo open/edit
+  - Cmd+click: toggle photo in `selectedIds_`; if ≥1 selected, first selection becomes primary
+  - Shift+click: range-select from `primaryId_` to clicked photo in the grid order
+  - Visual: gold border for `primaryId_`, blue border for other selected, gray for unselected
+  - Show "N selected" label in grid header when `selectedIds_` non-empty
+  - Add `using MultiSelectCb = std::function<void(std::vector<int64_t>)>` callback
+  - `main.mm`: when selection ≥ 2, show "Sync Metadata" and "Export" toolbar buttons that open respective dialogs
+  - `selectedIds_` is in-memory only (no DB persistence), reset on folder change
+  - `primaryId_` replaces old `selectedId_` for single-photo open/fullscreen behavior
 
-- [x] **Task 3 — Volume/USB detection**
-  Files: `src/import/VolumeWatcher.h/.mm`, `src/util/Platform.h/.mm`
-  ✓ Verify: Plug in USB → spdlog console shows `Volume mounted uuid=X path=/Volumes/...` within 500 ms. Unplug → `Volume unmounted`. `volumes` table row created/updated.
+  ✓ Verify: Cmd+click 5 photos → 5 blue borders + "5 selected" label. Shift+click selects contiguous range. Plain click clears multi-selection and selects single. "Sync Metadata" and "Export" buttons appear in toolbar when ≥2 selected.
 
-- [x] **Task 4 — RAW decoding & EXIF extraction**
-  Files: `src/import/RawDecoder.h/.cpp`, `ExifParser.h/.cpp`
-  ✓ Verify: Unit test with a sample `.CR3` or `.ARW` file passes: thumbnail JPEG bytes non-empty and valid (libjpeg-turbo can decode them), `ExifData.cameraMake` non-empty, `captureTime` is valid ISO 8601.
+- [ ] **Task 17 — Metadata Sync Dialog**
+  Files: `src/ui/MetaSyncDialog.h/.cpp`, `src/catalog/PhotoRepository.h/.cpp`, `src/main.mm`
 
-- [x] **Task 5 — Thumbnail cache**
-  Files: `src/catalog/ThumbnailCache.h/.cpp`
-  ✓ Verify: Generate thumbnails for 50 RAW files. Files appear at `~/Library/Caches/PhotoLibrary/thumbs/{xx}/{hash}.jpg`. Each is ≤ 256×256 px and a valid JPEG. `photos.thumb_path` updated in DB.
+  *PhotoRepository additions:*
+  - `updateEditSettingsBulk(std::vector<int64_t> ids, std::string json)` — wraps individual `updateEditSettings` calls in a single `Transaction`
 
-- [x] **Task 6 — Hash dedup**
-  Files: `src/import/HashDedup.h/.cpp`, `tests/test_hash_dedup.cpp`
-  ✓ Verify: Tests pass: identical file → same hash on two calls; 1-byte changed file → different hash; `isDuplicate(db, hash)` returns photo_id for a hash already in DB, nullopt otherwise.
+  *MetaSyncDialog:*
+  - Constructor takes `PhotoRepository&` and `ThumbnailCache&`
+  - `open(int64_t primaryId, std::vector<int64_t> targetIds)` — loads source photo's `EditSettings` from DB
+  - `render()` — modal with:
+    - Source photo thumbnail + filename header
+    - Checkbox "Adjustments" (Adjust tab fields: exposure, temperature, contrast, saturation) — `static bool` persists between opens
+    - Checkbox "Crop" (Crop tab fields: x, y, w, h, angleDeg) — `static bool` persists between opens
+    - "Sync N photos" button → merges checked fields into each target's existing `EditSettings` JSON → calls `updateEditSettingsBulk` → fires `DoneCb`
+  - Merge logic: load target's current `EditSettings`, overwrite only the checked sub-fields, write back — so unchecked fields are untouched
+  - After sync: enqueue thumbnail regeneration for each modified photo via `ThumbnailCache::generateAsync`
 
-- [x] **Task 7 — Import pipeline**
-  Files: `src/import/Importer.h/.cpp`, `FileScanner.h/.cpp`, `src/util/ThreadPool.h/.cpp`
-  ✓ Verify: Import 200 mixed RAW+JPEG files. Duplicates (injected by copying one file twice) are skipped with log message. Target has `YYYY-MM-DD` subfolders from EXIF date. Progress callback fires per file. DB has all non-duplicate entries.
+  *main.mm:*
+  - Wire "Sync Metadata" button → `metaSyncDialog_.open(primaryId, selectedIds)`
+  - On `DoneCb`: call `gridView_.reload()` to refresh thumbnails
 
-- [x] **Task 8 — Metal renderer & TextureManager**
-  Files: `src/ui/Renderer.h/.mm`, `TextureManager.h/.cpp`
-  ✓ Verify: 2000 placeholder textures render in a grid at ≥ 55 fps (use ImGui frame-time overlay). LRU evicts correctly at 2001st request. Textures created with `MTLStorageModeShared`.
+  ✓ Verify: Select 5 photos where photo 1 has exposure=1.5. Open Sync → check "Adjustments" only → Sync → all 5 photos have exposure=1.5 in DB (`SELECT edit_settings FROM photos WHERE id IN (...)`). Crop fields unchanged. Thumbnails regenerate in grid.
 
-- [x] **Task 9 — Grid view UI**
-  Files: `src/ui/GridView.h/.cpp`, `FolderTreePanel.h/.cpp`, `FilterBar.h/.cpp`
-  ✓ Verify: 10,000-photo catalog scrolls at ≥ 55 fps. Folder tree shows correct per-folder photo counts. Switching All↔Picked filter updates grid in one frame. Unavailable-volume photos show `?` badge.
+- [ ] **Task 18 — Export Selected as Google Photos JPEG**
+  Files: `src/export/Exporter.h/.cpp`, `src/ui/ExportDialog.h/.cpp`, `src/main.mm`
 
-- [x] **Task 10 — Import dialog UI**
-  Files: `src/ui/ImportDialog.h/.cpp`
-  ✓ Verify: USB drive with 50 RAW files → preview grid loads all 50 thumbs within 10 s. Import → progress bar advances → dialog reports "50 new, 0 duplicates". Cancel button halts mid-import.
+  *ExportDialog:*
+  - `open(int64_t primaryId, std::vector<int64_t> ids)` — replaces current single-photo open signature
+  - Remove preset selector; use single hardcoded "Google Photos" config: quality=90, maxDim=0 (full-res)
+  - Show target folder picker (NSOpenPanel, directory only) + "Export N photos" button
+  - Blocking modal: stays open during export showing progress bar + "done / total" file counter + Cancel button; dismisses automatically when complete
 
-- [x] **Task 11 — Fullscreen view & pick toggle**
-  Files: `src/ui/FullscreenView.h/.cpp`
-  ✓ Verify: `F` opens fullscreen; full-res RAW renders within 3 s (45 MP file). Left/Right arrows navigate. Backtick toggles picked; switching back to Grid with Picked filter shows the toggled photo. Scroll-wheel zooms, drag pans.
+  *Exporter:*
+  - Per photo: use `LibRaw::unpack()` + `LibRaw::dcraw_process()` for full-res decode (instead of embedded JPEG thumbnail)
+  - Apply `EditSettings` from `edit_settings` JSON:
+    - Crop: decode full-res → crop region via pixel offset + dimensions
+    - Exposure: multiply pixel values by `pow(2, exposure)`
+    - Contrast/saturation/temperature: simple per-pixel adjustments (HSL-space for saturation, color matrix for temperature)
+  - Write EXIF APP1 block into output JPEG:
+    - `DateTimeOriginal` from `PhotoRecord.captureTime`
+    - `Make` / `Model` from `PhotoRecord.cameraMake` / `cameraModel`
+    - GPS IFD from `PhotoRecord.gpsLat` / `gpsLon` / `gpsAltM` (if non-zero)
+    - Write using libjpeg-turbo `jpeg_write_marker` for APP1
+  - Output filename: `{captureTime_date}_{original_filename_stem}.jpg`
+  - Background `ThreadPool` (reuse existing), `progressCb_` per file, `doneCb_` on completion
 
-- [x] **Task 12 — Export pipeline**
-  Files: `src/export/Exporter.h/.cpp`, `ExportPreset.h`, `src/ui/ExportDialog.h/.cpp`
-  ✓ Verify: Select 20 RAW photos → "Medium Quality" export → 20 JPEG files on Desktop, each ≤ 2048px longest edge, JPEG quality ~75. Completes in < 60 s on M-series. Preset's `target_path` saved to DB.
+  *main.mm:*
+  - Wire "Export" button → `exportDialog_.open(primaryId, selectedIds)`
+  - Toolbar "Export" button available when ≥1 photo selected (single-photo export works too)
 
-- [x] **Task 13 — Weekly catalog backup**
-  Files: `src/catalog/BackupManager.h/.cpp`
-  ✓ Verify: Set `app_settings.last_backup_time` = 8 days ago → launch app → `.db` backup appears in `~/Library/Application Support/PhotoLibrary/backups/` within 30 s. With 6 artificial backup rows, cleanup leaves exactly 5 files and 5 `backup_log` rows.
-
-- [x] **Task 14 — Multi-level thumbnail pyramid (micro + standard)**
-  Files: `src/catalog/ThumbnailCache.h/.cpp`, `Schema.h/.cpp`, `PhotoRepository.h/.cpp`, `src/ui/GridView.h/.cpp`, `src/import/Importer.cpp`, `src/main.mm`
-  ✓ Verify: Import 50 RAW photos → `thumbs_micro/` contains 64px JPEGs (~1–3 KB each). Restart app → grid populates with blurry micro-thumbnails within 1–2 frames, then standard 256px thumbnails replace them. `SELECT thumb_micro_path FROM photos LIMIT 5` all non-empty. Schema v3 migration adds `thumb_micro_path TEXT` column.
-
-- [x] **Task 15 — Decompose EditView::render()**
-  Files: `src/ui/EditView.h/.mm`
-  ✓ Verify: `render()` is a 5-line composition delegating to `handleKeyCapture`, `renderPreviewArea`, `renderControlPanel`, `renderModeTabs`, `renderSaveButtons`, `pollSaveCompletion`. Build clean, behaviour unchanged.
+  ✓ Verify: Select 10 RAW photos with various edits → Export → 10 JPEGs in target folder, each full-res with crop applied. `exiftool output.jpg` shows correct `DateTimeOriginal`, `Make`, `Model`. Photos import cleanly into Google Photos with correct dates.
