@@ -118,15 +118,22 @@ EditView::EditView(catalog::PhotoRepository& repo,
   : repo_(repo), thumbCache_(thumbCache), texMgr_(texMgr), device_(device) {}
 
 EditView::~EditView() {
+  fullDecodeCancel_ = true;
+  if (loadThread_.joinable()) { loadThread_.join(); }
   releasePreviewTex();
-  if (saveThread_.joinable()) {
-    saveThread_.join();
-  }
+  if (saveThread_.joinable()) { saveThread_.join(); }
 }
 
 // ── open / close ─────────────────────────────────────────────────────────────
 
 void EditView::open(int64_t photoId) {
+  // Cancel + join any in-flight load from a previous photo
+  fullDecodeCancel_ = true;
+  if (loadThread_.joinable()) { loadThread_.join(); }
+  fullDecodeCancel_ = false;
+  fullDecodeReady_  = false;
+  pendingRgb_.clear();
+
   photoId_ = photoId;
   open_          = true;
   justOpened_    = true;
@@ -134,6 +141,11 @@ void EditView::open(int64_t photoId) {
   tabSyncNeeded_ = false;
   dragHandle_ = -1;
   aspectMode_ = 0;
+
+  // Clear source pixels so drawPreview falls back to texMgr_ grid thumbnail
+  originalRgb_.clear();
+  srcW_ = 0;
+  srcH_ = 0;
 
   // Load existing edit settings from DB
   const auto rec = repo_.findById(photoId);
@@ -148,7 +160,17 @@ void EditView::open(int64_t photoId) {
   }
   saved_ = settings_;
 
-  loadSourcePixels(photoId);
+  // Start accurate LibRaw decode in background immediately
+  std::string srcPath;
+  if (rec) {
+    srcPath = repo_.fullPathFor(rec->folderId, rec->filename);
+  }
+  if (!srcPath.empty()) {
+    fullDecoding_ = true;
+    loadThread_ = std::thread([this, srcPath = std::move(srcPath)]() {
+      loadLibRawBackground(srcPath);
+    });
+  }
   previewDirty_ = true;
 }
 
@@ -165,21 +187,10 @@ void EditView::setMode(EditMode mode) {
 
 // ── Source pixel loading ──────────────────────────────────────────────────────
 
-bool EditView::loadSourcePixels(int64_t photoId) {
-  originalRgb_.clear();
-  srcW_ = 0;
-  srcH_ = 0;
-
-  const auto rec = repo_.findById(photoId);
-  if (!rec) {
-    return false;
-  }
-  const std::string srcPath = repo_.fullPathFor(rec->folderId, rec->filename);
-
-  // Full RAW decode with identical parameters to Exporter::exportOne so the
-  // preview and the exported JPEG start from the same pixel values.  Any other
-  // LibRaw param (e.g. half_size) changes the auto-brightness histogram and
-  // causes tonal divergence even when EditSettings are identical.
+// Runs on loadThread_. Full LibRaw decode with identical params to Exporter::exportOne
+// so the preview and the exported JPEG start from the same pixel values.
+// Writes to pendingRgb_/pendingW_/pendingH_, then sets fullDecodeReady_ = true.
+void EditView::loadLibRawBackground(std::string srcPath) {
   auto raw = std::make_unique<LibRaw>();
   raw->imgdata.params.output_bps    = 8;
   raw->imgdata.params.use_camera_wb = 1;
@@ -187,23 +198,42 @@ bool EditView::loadSourcePixels(int64_t photoId) {
       raw->unpack()                    != LIBRAW_SUCCESS ||
       raw->dcraw_process()             != LIBRAW_SUCCESS) {
     spdlog::warn("EditView: LibRaw decode failed for {}", srcPath);
-    return false;
+    fullDecodeReady_ = true;
+    return;
   }
+  if (fullDecodeCancel_.load()) { return; }
+
   libraw_processed_image_t* img = raw->dcraw_make_mem_image();
   if (!img || img->type != LIBRAW_IMAGE_BITMAP || img->colors != 3) {
     if (img) { LibRaw::dcraw_clear_mem(img); }
     spdlog::warn("EditView: unexpected LibRaw image format for {}", srcPath);
-    return false;
+    fullDecodeReady_ = true;
+    return;
   }
 
   // Downsample to ≤2000px on the long edge for fast interactive editing.
-  // Box-filter averaging is linear and preserves tonal response — the
-  // slider adjustments on the preview are visually identical to the export.
+  // Box-filter averaging is linear and preserves tonal response.
   constexpr int kMaxEdge = 2000;
   const int scale = std::max(1, std::max(img->width, img->height) / kMaxEdge);
-  originalRgb_ = downsampleRgb(img->data, img->width, img->height, scale, srcW_, srcH_);
+  pendingRgb_ = downsampleRgb(img->data, img->width, img->height, scale,
+                              pendingW_, pendingH_);
   LibRaw::dcraw_clear_mem(img);
-  return true;
+
+  if (!fullDecodeCancel_.load()) {
+    fullDecodeReady_ = true;
+  }
+}
+
+// Called from render() on the main thread. Swaps accurate pixels when background decode is done.
+void EditView::pollLibRawLoad() {
+  if (!fullDecoding_ || !fullDecodeReady_.load()) { return; }
+  loadThread_.join();
+  originalRgb_ = std::move(pendingRgb_);
+  srcW_ = pendingW_;
+  srcH_ = pendingH_;
+  fullDecoding_    = false;
+  fullDecodeReady_ = false;
+  previewDirty_    = true;  // rebuild preview with accurate base
 }
 
 // ── Pixel editing pipeline ────────────────────────────────────────────────────
@@ -609,17 +639,20 @@ void EditView::renderStraightenBar(float previewW, float screenH) {
 // ── Preview drawing ───────────────────────────────────────────────────────────
 
 void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
-  if (previewDirty_) {
+  if (previewDirty_ && !originalRgb_.empty()) {
     rebuildPreviewTexture();
     previewDirty_ = false;
   }
-  if (!previewTex_ || srcW_ <= 0 || srcH_ <= 0) {
-    return;
-  }
+  // While LibRaw is decoding, fall back to the cached grid thumbnail as a
+  // zero-cost visual placeholder (already in VRAM from grid rendering).
+  const auto* displayTex = previewTex_
+      ? previewTex_
+      : texMgr_.get(photoId_);
+  if (!displayTex || displayTex == texMgr_.placeholder()) { return; }
 
   const float areaW = (areaMax.x - areaMin.x) * 0.9f;
   const float areaH = (areaMax.y - areaMin.y) * 0.9f;
-  const float imgAspect  = (float)previewTex_.width / (float)previewTex_.height;
+  const float imgAspect  = (float)displayTex.width / (float)displayTex.height;
   const float areaAspect = areaW / areaH;
 
   float imgW, imgH;
@@ -650,12 +683,12 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
       return {center.x + dx * cosA - dy * sinA,
               center.y + dx * sinA + dy * cosA};
     };
-    dl->AddImageQuad(reinterpret_cast<ImTextureID>(previewTex_),
+    dl->AddImageQuad(reinterpret_cast<ImTextureID>(displayTex),
                      rotPt(imgMin.x, imgMin.y), rotPt(imgMax.x, imgMin.y),
                      rotPt(imgMax.x, imgMax.y), rotPt(imgMin.x, imgMax.y),
                      {0, 0}, {1, 0}, {1, 1}, {0, 1});
   } else {
-    dl->AddImage(reinterpret_cast<ImTextureID>(previewTex_), imgMin, imgMax);
+    dl->AddImage(reinterpret_cast<ImTextureID>(displayTex), imgMin, imgMax);
   }
 
   if (mode_ == EditMode::Crop) {
@@ -809,6 +842,15 @@ void EditView::renderPreviewArea(ImVec2 scr, float previewW) {
   ImDrawList* const fgDl = ImGui::GetForegroundDrawList();
   fgDl->AddRectFilled({0.f, 0.f}, {previewW, previewAreaH}, IM_COL32(0, 0, 0, 230));
   drawPreview(fgDl, {0.f, 0.f}, {previewW, previewAreaH});
+  if (fullDecoding_) {
+    const char* kLoadingLabel = "Loading accurate preview...";
+    const ImVec2 textSz = ImGui::CalcTextSize(kLoadingLabel);
+    const ImVec2 textPos = {
+      (previewW - textSz.x) * 0.5f,
+      previewAreaH - textSz.y - 12.f,
+    };
+    fgDl->AddText(textPos, IM_COL32(200, 200, 200, 200), kLoadingLabel);
+  }
   if (mode_ == EditMode::Crop) {
     renderStraightenBar(previewW, scr.y);
   }
@@ -844,7 +886,7 @@ bool EditView::renderSaveButtons(ImVec2 scr) {
   ImGui::SetCursorPosY(scr.y - 52.f);
   ImGui::Separator();
   ImGui::Spacing();
-  ImGui::BeginDisabled(saving_);
+  ImGui::BeginDisabled(saving_ || fullDecoding_);
   if (ImGui::Button("Save", {130.f, 0.f})) {
     startSave();
   }
@@ -905,6 +947,8 @@ void EditView::pollSaveCompletion() {
 
 void EditView::render() {
   if (!open_) { return; }
+
+  pollLibRawLoad();
 
   const ImVec2  scr      = ImGui::GetIO().DisplaySize;
   const float   panelW   = 300.f;

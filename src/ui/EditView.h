@@ -80,6 +80,14 @@ class EditView {
   float  dragOrigX_ = 0.f, dragOrigY_ = 0.f;
   float  dragOrigW_ = 1.f, dragOrigH_ = 1.f;
 
+  // Two-phase load: grid texture shown first, LibRaw accurate decode in background
+  std::atomic<bool> fullDecodeReady_{false};   // set by loadThread_ when done
+  std::atomic<bool> fullDecodeCancel_{false};  // set by main thread to abort
+  bool              fullDecoding_ = false;     // main-thread flag (mirrors thread state)
+  std::thread       loadThread_;
+  std::vector<uint8_t> pendingRgb_;            // written by loadThread_, swapped on main
+  int               pendingW_ = 0, pendingH_ = 0;
+
   std::atomic<bool> saveDone_{false};
   bool              saving_    = false;
   std::thread       saveThread_;
@@ -88,7 +96,8 @@ class EditView {
   int64_t pendingEvictId_ = 0;
 
   // helpers
-  bool loadSourcePixels(int64_t photoId);
+  void loadLibRawBackground(std::string srcPath);
+  void pollLibRawLoad();
   void rebuildPreviewTexture();
   void releasePreviewTex();
 
