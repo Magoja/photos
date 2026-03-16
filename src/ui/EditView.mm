@@ -411,8 +411,8 @@ void EditView::renderCropOverlay(ImDrawList* dl, ImVec2 imgMin, ImVec2 imgMax) c
 
   // Horizontal center guideline — visible while the straighten slider is dragged
   if (straightenDragging_) {
-    const float midY = (imgMin.y + imgMax.y) * 0.5f;
-    dl->AddLine({imgMin.x, midY}, {imgMax.x, midY}, IM_COL32(255, 255, 100, 200), 1.f);
+    const float midY = cy + ch * 0.5f;
+    dl->AddLine({cx, midY}, {cx + cw, midY}, IM_COL32(255, 255, 100, 200), 1.f);
   }
 }
 
