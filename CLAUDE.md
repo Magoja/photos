@@ -109,7 +109,7 @@ ctest --preset debug --output-on-failure  # run tests
 
   ✓ Verify: Select 5 photos where photo 1 has exposure=1.5. Open Sync → check "Adjustments" only → Sync → all 5 photos have exposure=1.5 in DB (`SELECT edit_settings FROM photos WHERE id IN (...)`). Crop fields unchanged. Thumbnails regenerate in grid.
 
-- [ ] **Task 18 — Export Selected as Google Photos JPEG**
+- [x] **Task 18 — Export Selected as Google Photos JPEG**
   Files: `src/export/Exporter.h/.cpp`, `src/ui/ExportDialog.h/.cpp`, `src/main.mm`
 
   *ExportDialog:*
