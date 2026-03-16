@@ -70,7 +70,7 @@ ctest --preset debug --output-on-failure  # run tests
 
 ## Tasks
 
-- [ ] **Task 16 — Multi-selection in Grid**
+- [x] **Task 16 — Multi-selection in Grid**
   Files: `src/ui/GridView.h/.cpp`, `src/main.mm`
 
   - Replace `int64_t selectedId_` with `int64_t primaryId_` + `std::unordered_set<int64_t> selectedIds_`

@@ -81,6 +81,7 @@ set(UI_SOURCES
     src/ui/EditView.mm
     src/ui/ImportDialog.cpp
     src/ui/ExportDialog.cpp
+    src/ui/MetaSyncDialog.cpp
     src/ui/SettingsPanel.cpp
 )
 

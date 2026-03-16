@@ -356,6 +356,19 @@ void PhotoRepository::updateEditSettings(int64_t id, const std::string& json) {
   s.step();
 }
 
+void PhotoRepository::updateEditSettingsBulk(const std::vector<int64_t>& ids,
+                                             const std::string& json) {
+  auto txn = db_.transaction();
+  auto s = db_.prepare("UPDATE photos SET edit_settings=? WHERE id=?");
+  for (const int64_t id : ids) {
+    s.reset();
+    s.bind(1, json);
+    s.bind(2, id);
+    s.step();
+  }
+  txn.commit();
+}
+
 // ── App settings ──────────────────────────────────────────────────────────────
 
 std::string PhotoRepository::getSetting(const std::string& key, const std::string& def) {

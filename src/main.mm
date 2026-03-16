@@ -36,6 +36,7 @@
 #include "ui/EditView.h"
 #include "ui/ImportDialog.h"
 #include "ui/ExportDialog.h"
+#include "ui/MetaSyncDialog.h"
 #include "ui/SettingsPanel.h"
 
 // Util
@@ -157,6 +158,7 @@ int main(int /*argc*/, char** /*argv*/) {
   ui::EditView editView(repo, thumbCache, texMgr, (MTLDevicePtr)device);
   ui::ImportDialog importDlg(db);
   ui::ExportDialog exportDlg(repo);
+  ui::MetaSyncDialog metaSyncDlg(repo, texMgr);
   ui::SettingsPanel settingsPanel(repo, dbPath);
 
   // ── Async thumbnail loader ─────────────────────────────────────────────────
@@ -269,6 +271,8 @@ int main(int /*argc*/, char** /*argv*/) {
     folderPanel.refresh();
     grid.reload();
   });
+
+  metaSyncDlg.setDoneCallback([&]() { grid.reload(); });
 
   // ── Volume watcher ────────────────────────────────────────────────────────
   import_ns::VolumeWatcher volWatcher;
@@ -459,7 +463,9 @@ int main(int /*argc*/, char** /*argv*/) {
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.8f, 1.f));
         if (ImGui::Button("Sync Metadata")) {
-          // wired in Task 17
+          std::vector<int64_t> allSel(grid.selectedIds().begin(), grid.selectedIds().end());
+          allSel.push_back(grid.primaryId());
+          metaSyncDlg.open(grid.primaryId(), std::move(allSel));
         }
         ImGui::PopStyleColor();
         ImGui::SameLine();
@@ -507,6 +513,7 @@ int main(int /*argc*/, char** /*argv*/) {
       // ── Dialogs ───────────────────────────────────────────────────────
       importDlg.render();
       exportDlg.render();
+      metaSyncDlg.render();
 
       ImGui::Render();
 
