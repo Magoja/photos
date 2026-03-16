@@ -33,6 +33,15 @@ void SettingsPanel::render() {
     ImGui::Text("Database Path:");
     ImGui::TextDisabled("%s", dbPath_.c_str());
     ImGui::TextDisabled("(Changing DB path requires app restart)");
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    if (ImGui::Button("Clear Preview Cache")) {
+      if (clearCacheCb_) { clearCacheCb_(); }
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Deletes all cached thumbnails and forces regeneration.");
   }
   ImGui::End();
 }

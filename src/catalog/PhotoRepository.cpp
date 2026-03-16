@@ -369,6 +369,11 @@ void PhotoRepository::updateEditSettingsBulk(const std::vector<int64_t>& ids,
   txn.commit();
 }
 
+void PhotoRepository::clearAllThumbs() {
+  db_.exec("UPDATE photos SET thumb_path=NULL, thumb_micro_path=NULL, "
+           "thumb_width=0, thumb_height=0, thumb_mtime=0");
+}
+
 // ── App settings ──────────────────────────────────────────────────────────────
 
 std::string PhotoRepository::getSetting(const std::string& key, const std::string& def) {

@@ -52,6 +52,9 @@ class TextureManager {
   // Explicitly evict a photo's texture
   void evict(int64_t photoId);
 
+  // Evict all textures (used by clear-cache). Must be called from the main thread.
+  void evictAll();
+
   // Returns stored pixel dimensions; {0,0} if not in cache
   std::pair<int, int> getSize(int64_t photoId) const;
 

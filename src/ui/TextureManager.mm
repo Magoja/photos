@@ -220,6 +220,16 @@ std::pair<int, int> TextureManager::getSize(int64_t photoId) const {
   return {it->second.second.width, it->second.second.height};
 }
 
+void TextureManager::evictAll() {
+  std::lock_guard lk(mutex_);
+  for (auto& [pid, pair] : lruMap_) {
+    id<MTLTexture> tex = (id<MTLTexture>)pair.second.texture;
+    if (tex) { [tex release]; }
+  }
+  lruMap_.clear();
+  lruList_.clear();
+}
+
 void TextureManager::evictOldest() {
   if (lruList_.empty()) {
     return;

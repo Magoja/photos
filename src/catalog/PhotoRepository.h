@@ -89,6 +89,9 @@ class PhotoRepository {
   void updateEditSettings(int64_t id, const std::string& json);
   void updateEditSettingsBulk(const std::vector<int64_t>& ids, const std::string& json);
 
+  // Clears all thumb_path / thumb_micro_path entries so thumbnails regenerate.
+  void clearAllThumbs();
+
   // ── App settings ─────────────────────────────────────────────────────────
   std::string getSetting(const std::string& key, const std::string& def = "");
   void setSetting(const std::string& key, const std::string& value);

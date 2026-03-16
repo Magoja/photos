@@ -161,9 +161,14 @@ static void setupThumbMissCallback(RenderCtx& ctx, util::ThreadPool& thumbPool) 
             ctx.thumbResQ.push({pid, std::move(rgba), w, h});
             return;
           }
+          // Path was set but file missing or unreadable — do NOT fall through
+          // to slow path: that would overwrite an edited thumbnail's DB entry
+          // with the original hash-based path, silently reverting edits.
+          spdlog::warn("Thumb load failed for pid={}: {}", pid, path);
+          return;
         }
 
-        // Slow path: cache file missing — decode source and regenerate
+        // Slow path: no thumb path in DB — decode source and generate for the first time
         auto rec = [&]() -> std::optional<catalog::PhotoRecord> {
           std::lock_guard lk(ctx.db.mutex());
           return ctx.repo.findById(pid);
@@ -221,6 +226,23 @@ static void wireUiCallbacks(RenderCtx& ctx) {
   });
 
   ctx.metaSyncDlg.setDoneCallback([&]() { ctx.grid.reload(); });
+
+  ctx.settingsPanel.setClearCacheCallback([&]() {
+    ctx.texMgr.evictAll();
+    {
+      std::lock_guard lk(ctx.db.mutex());
+      ctx.repo.clearAllThumbs();
+    }
+    const std::string cacheBase = util::cacheDir();
+    for (const auto& dir : {ctx.thumbDir,
+                             cacheBase + "/thumbs_micro",
+                             cacheBase + "/thumbs_edit"}) {
+      std::error_code ec;
+      fs::remove_all(dir, ec);
+      fs::create_directories(dir, ec);
+    }
+    ctx.grid.reload();
+  });
 }
 
 static void drainThumbQueue(RenderCtx& ctx) {
@@ -239,6 +261,7 @@ static void drainThumbQueue(RenderCtx& ctx) {
 static void drainTextureEvictions(RenderCtx& ctx) {
   if (const int64_t evictId = ctx.editView.pollPendingEvict(); evictId > 0) {
     ctx.texMgr.evict(evictId);
+    ctx.texMgr.evict(evictId + ui::GridView::kMicroOffset);
   }
   for (auto& u : ctx.metaSyncDlg.takePendingThumbUpdates()) {
     ctx.texMgr.evict(u.id);
