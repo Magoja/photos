@@ -71,6 +71,36 @@ static CAMetalLayer* getMetalLayer(SDL_Window* window, id<MTLDevice> device) {
 // ── Free helpers (anonymous namespace) ───────────────────────────────────────
 namespace {
 
+static constexpr float kStatusH = 28.f;
+
+struct ThumbResult {
+  int64_t pid;
+  std::vector<uint8_t> rgba;
+  int width = 0;
+  int height = 0;
+};
+
+struct RenderCtx {
+  bool& running;
+  std::string& libraryRoot;
+  std::string& thumbDir;
+  catalog::Database& db;
+  catalog::PhotoRepository& repo;
+  catalog::ThumbnailCache& thumbCache;
+  ui::TextureManager& texMgr;
+  ui::GridView& grid;
+  ui::FolderTreePanel& folderPanel;
+  ui::FilterBar& filterBar;
+  ui::FullscreenView& fullscreen;
+  ui::EditView& editView;
+  ui::ImportDialog& importDlg;
+  ui::ExportDialog& exportDlg;
+  ui::MetaSyncDialog& metaSyncDlg;
+  ui::SettingsPanel& settingsPanel;
+  std::mutex& thumbMtx;
+  std::queue<ThumbResult>& thumbResQ;
+};
+
 static bool loadAndDecodeJpeg(const std::string& path,
                                std::vector<uint8_t>& outRgba, int& outW, int& outH) {
   std::ifstream f(path, std::ios::binary);
@@ -105,6 +135,247 @@ static void applyFilterMode(ui::FilterBar& filterBar, ui::GridView& grid,
                              ui::FolderTreePanel& folderPanel, ui::FilterMode mode) {
   filterBar.setMode(mode);
   grid.loadFolder(folderPanel.selectedFolder(), mode);
+}
+
+static void setupThumbMissCallback(RenderCtx& ctx, util::ThreadPool& thumbPool) {
+  ctx.grid.setThumbMissCallback(
+    [&](int64_t pid, std::string path, std::string microPath) {
+      thumbPool.submit([pid, path = std::move(path), microPath = std::move(microPath),
+                        &ctx]() {
+        // Micro load (fast path — tiny file, nearly always cache-hit after first import)
+        if (!microPath.empty()) {
+          std::vector<uint8_t> rgba;
+          int w = 0, h = 0;
+          if (loadAndDecodeJpeg(microPath, rgba, w, h)) {
+            std::lock_guard lk(ctx.thumbMtx);
+            ctx.thumbResQ.push({pid + ui::GridView::kMicroOffset, std::move(rgba), w, h});
+          }
+        }
+
+        // Standard load: fast path if file already cached on disk
+        if (!path.empty()) {
+          std::vector<uint8_t> rgba;
+          int w = 0, h = 0;
+          if (loadAndDecodeJpeg(path, rgba, w, h)) {
+            std::lock_guard lk(ctx.thumbMtx);
+            ctx.thumbResQ.push({pid, std::move(rgba), w, h});
+            return;
+          }
+        }
+
+        // Slow path: cache file missing — decode source and regenerate
+        auto rec = [&]() -> std::optional<catalog::PhotoRecord> {
+          std::lock_guard lk(ctx.db.mutex());
+          return ctx.repo.findById(pid);
+        }();
+        if (!rec) {
+          return;
+        }
+
+        std::string srcPath = ctx.repo.fullPathFor(rec->folderId, rec->filename);
+        auto dec = import_ns::RawDecoder::decode(srcPath);
+        if (!dec.ok || dec.thumbJpeg.empty()) {
+          return;
+        }
+
+        {
+          std::lock_guard lk(ctx.db.mutex());
+          ctx.thumbCache.generate(pid, rec->fileHash, dec.thumbJpeg, ctx.repo);
+          ctx.thumbCache.generateMicro(pid, rec->fileHash, dec.thumbJpeg, ctx.repo);
+        }
+
+        // Now serve the freshly written standard file
+        std::string newPath = ctx.repo.getThumbPath(pid);
+        if (newPath.empty()) {
+          return;
+        }
+        std::vector<uint8_t> rgba;
+        int w = 0, h = 0;
+        if (loadAndDecodeJpeg(newPath, rgba, w, h)) {
+          std::lock_guard lk(ctx.thumbMtx);
+          ctx.thumbResQ.push({pid, std::move(rgba), w, h});
+        }
+      });
+    });
+}
+
+static void wireUiCallbacks(RenderCtx& ctx) {
+  ctx.folderPanel.setOnSelect([&](int64_t fid) {
+    ctx.grid.loadFolder(fid, ctx.filterBar.mode());
+  });
+
+  ctx.fullscreen.setPickChangedCallback(
+    [&](int64_t /*pid*/, int /*picked*/) { ctx.grid.reload(); });
+
+  ctx.fullscreen.setOpenEditCallback([&](const int64_t photoId) {
+    if (!ctx.editView.isOpen()) {
+      ctx.editView.open(photoId);
+    }
+  });
+
+  ctx.editView.setSavedCallback([&](int64_t /*photoId*/) { ctx.grid.reload(); });
+
+  ctx.importDlg.setDoneCallback([&]() {
+    ctx.folderPanel.refresh();
+    ctx.grid.reload();
+  });
+
+  ctx.metaSyncDlg.setDoneCallback([&]() { ctx.grid.reload(); });
+}
+
+static void drainThumbQueue(RenderCtx& ctx) {
+  std::queue<ThumbResult> local;
+  {
+    std::lock_guard lk(ctx.thumbMtx);
+    std::swap(local, ctx.thumbResQ);
+  }
+  while (!local.empty()) {
+    auto& r = local.front();
+    ctx.texMgr.uploadRgba(r.pid, r.rgba, r.width, r.height);
+    local.pop();
+  }
+}
+
+static void drainTextureEvictions(RenderCtx& ctx) {
+  if (const int64_t evictId = ctx.editView.pollPendingEvict(); evictId > 0) {
+    ctx.texMgr.evict(evictId);
+  }
+  for (auto& u : ctx.metaSyncDlg.takePendingThumbUpdates()) {
+    ctx.texMgr.evict(u.id);
+    ctx.texMgr.evict(u.id + ui::GridView::kMicroOffset);
+    ctx.texMgr.uploadRgba(u.id, u.rgba, u.w, u.h);
+  }
+}
+
+static void processGlobalHotkeys(RenderCtx& ctx) {
+  const bool noTextInput = !ImGui::GetIO().WantTextInput;
+  const int64_t selId    = ctx.grid.selectedId();
+  if (!noTextInput || selId <= 0) {
+    return;
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_F) && !ctx.fullscreen.isOpen()) {
+    ctx.editView.close();
+    std::vector<int64_t> ids = ctx.repo.queryAll(false);
+    ctx.fullscreen.setPhotoList(ids, selId);
+    ctx.fullscreen.open(selId);
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_D)) {
+    openOrSwitchEditMode(ctx.fullscreen, ctx.editView, selId, ui::EditMode::Adjust);
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_R)) {
+    openOrSwitchEditMode(ctx.fullscreen, ctx.editView, selId, ui::EditMode::Crop);
+  }
+}
+
+static void renderMenuBar(RenderCtx& ctx) {
+  if (!ImGui::BeginMainMenuBar()) {
+    return;
+  }
+  if (ImGui::BeginMenu("File")) {
+    if (ImGui::MenuItem("Import...")) {
+      ctx.importDlg.open("", ctx.libraryRoot, ctx.thumbDir);
+    }
+    if (ImGui::MenuItem("Export Selected", nullptr, false, ctx.grid.primaryId() > 0)) {
+      ctx.exportDlg.open(ctx.grid.primaryId(),
+                         buildSelectionList(ctx.grid.selectedIds(), ctx.grid.primaryId()));
+    }
+    ImGui::Separator();
+    if (ImGui::MenuItem("Settings...")) {
+      ctx.settingsPanel.open();
+    }
+    ImGui::Separator();
+    if (ImGui::MenuItem("Quit", "Cmd+Q")) {
+      ctx.running = false;
+    }
+    ImGui::EndMenu();
+  }
+  if (ImGui::BeginMenu("View")) {
+    const bool isAll    = (ctx.filterBar.mode() == ui::FilterMode::All);
+    const bool isPicked = (ctx.filterBar.mode() == ui::FilterMode::Picked);
+    if (ImGui::MenuItem("All Photos", nullptr, isAll)) {
+      applyFilterMode(ctx.filterBar, ctx.grid, ctx.folderPanel, ui::FilterMode::All);
+    }
+    if (ImGui::MenuItem("Picked Only", nullptr, isPicked)) {
+      applyFilterMode(ctx.filterBar, ctx.grid, ctx.folderPanel, ui::FilterMode::Picked);
+    }
+    ImGui::EndMenu();
+  }
+  ImGui::EndMainMenuBar();
+}
+
+static void renderLibraryRootModal(RenderCtx& ctx) {
+  if (ctx.libraryRoot.empty()) {
+    ImGui::OpenPopup("Choose Library Folder");
+  }
+  if (!ImGui::BeginPopupModal("Choose Library Folder", nullptr,
+                              ImGuiWindowFlags_AlwaysAutoResize)) {
+    return;
+  }
+  ImGui::Text("Choose a folder where Jakeutil Photos will store your images.");
+  ImGui::Spacing();
+  if (ImGui::Button("Browse...")) {
+    if (auto p = util::pickFolder()) {
+      ctx.libraryRoot = *p;
+      util::ensureDir(ctx.libraryRoot);
+      ctx.repo.setSetting("library_root", ctx.libraryRoot);
+      ctx.repo.setLibraryRoot(ctx.libraryRoot);
+    }
+  }
+  if (!ctx.libraryRoot.empty()) {
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::EndPopup();
+}
+
+static void renderPhotosPanel(RenderCtx& ctx) {
+  ImGui::Begin("Photos");
+  if (ctx.filterBar.render()) {
+    ctx.grid.loadFolder(ctx.folderPanel.selectedFolder(), ctx.filterBar.mode());
+  }
+  if (ctx.grid.selectionCount() >= 2) {
+    ImGui::SameLine();
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.8f, 1.f));
+    if (ImGui::Button("Sync Metadata")) {
+      ctx.metaSyncDlg.open(ctx.grid.primaryId(),
+                           buildSelectionList(ctx.grid.selectedIds(), ctx.grid.primaryId()));
+    }
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.3f, 1.f));
+    if (ImGui::Button("Export")) {
+      ctx.exportDlg.open(ctx.grid.primaryId(),
+                         buildSelectionList(ctx.grid.selectedIds(), ctx.grid.primaryId()));
+    }
+    ImGui::PopStyleColor();
+  }
+  ImGui::Separator();
+  ctx.grid.render();
+  ImGui::End();
+}
+
+static void renderStatusBar(RenderCtx& ctx) {
+  ImGuiViewport* vp = ImGui::GetMainViewport();
+  ImGui::SetNextWindowPos({vp->WorkPos.x, vp->WorkPos.y + vp->WorkSize.y - kStatusH});
+  ImGui::SetNextWindowSize({vp->WorkSize.x, kStatusH});
+  ImGui::SetNextWindowViewport(vp->ID);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {6.f, 4.f});
+  ImGui::Begin("##StatusBar", nullptr,
+               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking |
+                 ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings |
+                 ImGuiWindowFlags_NoBringToFrontOnFocus);
+  ImGui::PopStyleVar();
+  ImGui::Text("Photos: %lld  |  FPS: %.0f",
+              (long long)ctx.grid.photoCount(), ImGui::GetIO().Framerate);
+  ImGui::SameLine();
+  const float sliderW = 150.f;
+  ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - sliderW);
+  ImGui::SetNextItemWidth(sliderW);
+  float zoom = ctx.grid.thumbScale();
+  if (ImGui::SliderFloat("##zoom", &zoom, 0.5f, 3.0f, "")) {
+    ctx.grid.setThumbScale(zoom);
+  }
+  ImGui::End();
 }
 
 } // namespace
@@ -203,96 +474,22 @@ int main(int /*argc*/, char** /*argv*/) {
   ui::SettingsPanel settingsPanel(repo, dbPath);
 
   // ── Async thumbnail loader ─────────────────────────────────────────────────
-  struct ThumbResult {
-    int64_t pid;
-    std::vector<uint8_t> rgba;
-    int width = 0;
-    int height = 0;
-  };
   std::mutex thumbMtx;
   std::queue<ThumbResult> thumbResQ;
   util::ThreadPool thumbPool(2);
 
-  grid.setThumbMissCallback([&](int64_t pid, std::string path, std::string microPath) {
-    thumbPool.submit([pid, path = std::move(path), microPath = std::move(microPath), &thumbMtx,
-                      &thumbResQ, &repo, &thumbCache, &db]() {
-      // Micro load (fast path — tiny file, nearly always cache-hit after first import)
-      if (!microPath.empty()) {
-        std::vector<uint8_t> rgba;
-        int w = 0, h = 0;
-        if (loadAndDecodeJpeg(microPath, rgba, w, h)) {
-          std::lock_guard lk(thumbMtx);
-          thumbResQ.push({pid + ui::GridView::kMicroOffset, std::move(rgba), w, h});
-        }
-      }
+  // ── Wire everything up ────────────────────────────────────────────────────
+  bool running = true;
+  RenderCtx ctx{running, libraryRoot, thumbDir, db, repo, thumbCache, texMgr,
+                grid, folderPanel, filterBar, fullscreen, editView,
+                importDlg, exportDlg, metaSyncDlg, settingsPanel,
+                thumbMtx, thumbResQ};
 
-      // Standard load: fast path if file already cached on disk
-      if (!path.empty()) {
-        std::vector<uint8_t> rgba;
-        int w = 0, h = 0;
-        if (loadAndDecodeJpeg(path, rgba, w, h)) {
-          std::lock_guard lk(thumbMtx);
-          thumbResQ.push({pid, std::move(rgba), w, h});
-          return;
-        }
-      }
-
-      // Slow path: cache file missing — decode source and regenerate
-      auto rec = [&]() -> std::optional<catalog::PhotoRecord> {
-        std::lock_guard lk(db.mutex());
-        return repo.findById(pid);
-      }();
-      if (!rec) {
-        return;
-      }
-
-      std::string srcPath = repo.fullPathFor(rec->folderId, rec->filename);
-      auto dec = import_ns::RawDecoder::decode(srcPath);
-      if (!dec.ok || dec.thumbJpeg.empty()) {
-        return;
-      }
-
-      {
-        std::lock_guard lk(db.mutex());
-        thumbCache.generate(pid, rec->fileHash, dec.thumbJpeg, repo);
-        thumbCache.generateMicro(pid, rec->fileHash, dec.thumbJpeg, repo);
-      }
-
-      // Now serve the freshly written standard file
-      std::string newPath = repo.getThumbPath(pid);
-      if (newPath.empty()) {
-        return;
-      }
-      std::vector<uint8_t> rgba;
-      int w = 0, h = 0;
-      if (loadAndDecodeJpeg(newPath, rgba, w, h)) {
-        std::lock_guard lk(thumbMtx);
-        thumbResQ.push({pid, std::move(rgba), w, h});
-      }
-    });
-  });
-
-  // Initial load
   folderPanel.refresh();
   grid.loadFolder(0, ui::FilterMode::All);
 
-  folderPanel.setOnSelect([&](int64_t fid) { grid.loadFolder(fid, filterBar.mode()); });
-
-  fullscreen.setPickChangedCallback([&](int64_t /*pid*/, int /*picked*/) { grid.reload(); });
-
-  fullscreen.setOpenEditCallback([&](const int64_t photoId) {
-    if (!editView.isOpen()) {
-      editView.open(photoId);
-    }
-  });
-  editView.setSavedCallback([&](int64_t /*photoId*/) { grid.reload(); });
-
-  importDlg.setDoneCallback([&]() {
-    folderPanel.refresh();
-    grid.reload();
-  });
-
-  metaSyncDlg.setDoneCallback([&]() { grid.reload(); });
+  setupThumbMissCallback(ctx, thumbPool);
+  wireUiCallbacks(ctx);
 
   // ── Volume watcher ────────────────────────────────────────────────────────
   import_ns::VolumeWatcher volWatcher;
@@ -310,9 +507,6 @@ int main(int /*argc*/, char** /*argv*/) {
   volWatcher.start();
 
   // ── Render loop ───────────────────────────────────────────────────────────
-  bool running = true;
-  static constexpr float kStatusH = 28.f;
-
   while (running) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
@@ -343,105 +537,11 @@ int main(int /*argc*/, char** /*argv*/) {
       ImGui_ImplSDL2_NewFrame();
       ImGui::NewFrame();
 
-      // ── Drain thumbnail results (main thread upload) ──────────────────
-      {
-        std::queue<ThumbResult> local;
-        {
-          std::lock_guard lk(thumbMtx);
-          std::swap(local, thumbResQ);
-        }
-        while (!local.empty()) {
-          auto& r = local.front();
-          texMgr.uploadRgba(r.pid, r.rgba, r.width, r.height);
-          local.pop();
-        }
-      }
-
-      // ── Drain pending texture evictions (must precede grid AddImage calls) ──
-      if (const int64_t evictId = editView.pollPendingEvict(); evictId > 0) {
-        texMgr.evict(evictId);
-      }
-
-      // ── Drain MetaSync thumbnail updates (evict stale LRU; upload edited RGBA) ──
-      for (auto& u : metaSyncDlg.takePendingThumbUpdates()) {
-        texMgr.evict(u.id);
-        texMgr.evict(u.id + ui::GridView::kMicroOffset);
-        texMgr.uploadRgba(u.id, u.rgba, u.w, u.h);
-      }
-
-      // ── Global hotkeys: F = fullscreen, D = adjust, R = crop ────────
-      // Each key closes the other UIs and opens its own, from any state.
-      const bool noTextInput = !ImGui::GetIO().WantTextInput;
-      const int64_t selId    = grid.selectedId();
-      if (noTextInput && selId > 0) {
-        if (ImGui::IsKeyPressed(ImGuiKey_F) && !fullscreen.isOpen()) {
-          editView.close();
-          std::vector<int64_t> ids = repo.queryAll(false);
-          fullscreen.setPhotoList(ids, selId);
-          fullscreen.open(selId);
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_D)) {
-          openOrSwitchEditMode(fullscreen, editView, selId, ui::EditMode::Adjust);
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_R)) {
-          openOrSwitchEditMode(fullscreen, editView, selId, ui::EditMode::Crop);
-        }
-      }
-
-      // ── Menu bar ─────────────────────────────────────────────────────
-      if (ImGui::BeginMainMenuBar()) {
-        if (ImGui::BeginMenu("File")) {
-          if (ImGui::MenuItem("Import...")) {
-            importDlg.open("", libraryRoot, thumbDir);
-          }
-          if (ImGui::MenuItem("Export Selected", nullptr, false, grid.primaryId() > 0)) {
-            exportDlg.open(grid.primaryId(), buildSelectionList(grid.selectedIds(), grid.primaryId()));
-          }
-          ImGui::Separator();
-          if (ImGui::MenuItem("Settings...")) {
-            settingsPanel.open();
-          }
-          ImGui::Separator();
-          if (ImGui::MenuItem("Quit", "Cmd+Q")) {
-            running = false;
-          }
-          ImGui::EndMenu();
-        }
-        if (ImGui::BeginMenu("View")) {
-          bool isAll = (filterBar.mode() == ui::FilterMode::All);
-          bool isPicked = (filterBar.mode() == ui::FilterMode::Picked);
-          if (ImGui::MenuItem("All Photos", nullptr, isAll)) {
-            applyFilterMode(filterBar, grid, folderPanel, ui::FilterMode::All);
-          }
-          if (ImGui::MenuItem("Picked Only", nullptr, isPicked)) {
-            applyFilterMode(filterBar, grid, folderPanel, ui::FilterMode::Picked);
-          }
-          ImGui::EndMenu();
-        }
-        ImGui::EndMainMenuBar();
-      }
-
-      // ── First-launch modal: ask user to choose library root ───────────
-      if (libraryRoot.empty()) {
-        ImGui::OpenPopup("Choose Library Folder");
-      }
-      if (ImGui::BeginPopupModal("Choose Library Folder", nullptr,
-                                 ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::Text("Choose a folder where Jakeutil Photos will store your images.");
-        ImGui::Spacing();
-        if (ImGui::Button("Browse...")) {
-          if (auto p = util::pickFolder()) {
-            libraryRoot = *p;
-            util::ensureDir(libraryRoot);
-            repo.setSetting("library_root", libraryRoot);
-            repo.setLibraryRoot(libraryRoot);
-          }
-        }
-        if (!libraryRoot.empty()) {
-          ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
-      }
+      drainThumbQueue(ctx);
+      drainTextureEvictions(ctx);
+      processGlobalHotkeys(ctx);
+      renderMenuBar(ctx);
+      renderLibraryRootModal(ctx);
 
       // ── DockSpace (leave room for status bar at bottom) ───────────────
       ImGuiViewport* vp = ImGui::GetMainViewport();
@@ -464,63 +564,12 @@ int main(int /*argc*/, char** /*argv*/) {
       folderPanel.render();
       ImGui::End();
 
-      // ── Main photos panel ─────────────────────────────────────────────
-      ImGui::Begin("Photos");
-      // Filter bar at top
-      if (filterBar.render()) {
-        grid.loadFolder(folderPanel.selectedFolder(), filterBar.mode());
-      }
-      // Multi-selection toolbar: show when ≥2 photos selected
-      if (grid.selectionCount() >= 2) {
-        ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.8f, 1.f));
-        if (ImGui::Button("Sync Metadata")) {
-          metaSyncDlg.open(grid.primaryId(), buildSelectionList(grid.selectedIds(), grid.primaryId()));
-        }
-        ImGui::PopStyleColor();
-        ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.3f, 1.f));
-        if (ImGui::Button("Export")) {
-          exportDlg.open(grid.primaryId(), buildSelectionList(grid.selectedIds(), grid.primaryId()));
-        }
-        ImGui::PopStyleColor();
-      }
-      ImGui::Separator();
-      grid.render();
-      ImGui::End();
+      renderPhotosPanel(ctx);
+      renderStatusBar(ctx);
 
-      // ── Status bar (pinned to bottom) ─────────────────────────────────
-      ImGui::SetNextWindowPos({vp->WorkPos.x, vp->WorkPos.y + vp->WorkSize.y - kStatusH});
-      ImGui::SetNextWindowSize({vp->WorkSize.x, kStatusH});
-      ImGui::SetNextWindowViewport(vp->ID);
-      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {6.f, 4.f});
-      ImGui::Begin("##StatusBar", nullptr,
-                   ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking |
-                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings |
-                     ImGuiWindowFlags_NoBringToFrontOnFocus);
-      ImGui::PopStyleVar();
-      ImGui::Text("Photos: %lld  |  FPS: %.0f", (long long)grid.photoCount(), io.Framerate);
-      ImGui::SameLine();
-      float sliderW = 150.f;
-      ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - sliderW);
-      ImGui::SetNextItemWidth(sliderW);
-      float zoom = grid.thumbScale();
-      if (ImGui::SliderFloat("##zoom", &zoom, 0.5f, 3.0f, "")) {
-        grid.setThumbScale(zoom);
-      }
-      ImGui::End();
-
-      // ── Settings panel ────────────────────────────────────────────────
       settingsPanel.render();
-
-      // ── Fullscreen overlay ────────────────────────────────────────────
       fullscreen.render();
-
-      // ── Edit overlay ──────────────────────────────────────────────────
       editView.render();
-
-      // ── Dialogs ───────────────────────────────────────────────────────
       importDlg.render();
       exportDlg.render();
       metaSyncDlg.render();
