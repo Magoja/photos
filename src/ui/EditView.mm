@@ -49,6 +49,32 @@ static std::vector<uint8_t> rgbToRgba(const std::vector<uint8_t>& rgb, int pixel
   return rgba;
 }
 
+// Box-filter downsample of an RGB (3-byte) buffer by an integer scale factor.
+// Averaging is linear so tonal response is preserved identically to full-size.
+static std::vector<uint8_t> downsampleRgb(const uint8_t* src, int srcW, int srcH,
+                                           int scale, int& outW, int& outH) {
+  outW = srcW / scale;
+  outH = srcH / scale;
+  std::vector<uint8_t> dst(static_cast<size_t>(outW * outH) * 3);
+  const int count = scale * scale;
+  for (int y = 0; y < outH; ++y) {
+    for (int x = 0; x < outW; ++x) {
+      int sumR = 0, sumG = 0, sumB = 0;
+      for (int dy = 0; dy < scale; ++dy) {
+        for (int dx = 0; dx < scale; ++dx) {
+          const int idx = ((y * scale + dy) * srcW + (x * scale + dx)) * 3;
+          sumR += src[idx]; sumG += src[idx + 1]; sumB += src[idx + 2];
+        }
+      }
+      const int out = (y * outW + x) * 3;
+      dst[out]     = static_cast<uint8_t>(sumR / count);
+      dst[out + 1] = static_cast<uint8_t>(sumG / count);
+      dst[out + 2] = static_cast<uint8_t>(sumB / count);
+    }
+  }
+  return dst;
+}
+
 static std::array<ImVec2, 8> cropHandlePositions(float cx, float cy, float cw, float ch) {
   return {{
     {cx,      cy},        // TL
@@ -150,11 +176,11 @@ bool EditView::loadSourcePixels(int64_t photoId) {
   }
   const std::string srcPath = repo_.fullPathFor(rec->folderId, rec->filename);
 
-  // Full RAW decode using the same pipeline as Exporter so the preview tonality
-  // matches the exported file exactly.  half_size=1 halves linear dimensions for
-  // a fast interactive preview without altering white balance, gamma, or color.
+  // Full RAW decode with identical parameters to Exporter::exportOne so the
+  // preview and the exported JPEG start from the same pixel values.  Any other
+  // LibRaw param (e.g. half_size) changes the auto-brightness histogram and
+  // causes tonal divergence even when EditSettings are identical.
   auto raw = std::make_unique<LibRaw>();
-  raw->imgdata.params.half_size     = 1;
   raw->imgdata.params.output_bps    = 8;
   raw->imgdata.params.use_camera_wb = 1;
   if (raw->open_file(srcPath.c_str()) != LIBRAW_SUCCESS ||
@@ -169,9 +195,13 @@ bool EditView::loadSourcePixels(int64_t photoId) {
     spdlog::warn("EditView: unexpected LibRaw image format for {}", srcPath);
     return false;
   }
-  srcW_ = img->width;
-  srcH_ = img->height;
-  originalRgb_.assign(img->data, img->data + static_cast<size_t>(srcW_ * srcH_ * 3));
+
+  // Downsample to ≤2000px on the long edge for fast interactive editing.
+  // Box-filter averaging is linear and preserves tonal response — the
+  // slider adjustments on the preview are visually identical to the export.
+  constexpr int kMaxEdge = 2000;
+  const int scale = std::max(1, std::max(img->width, img->height) / kMaxEdge);
+  originalRgb_ = downsampleRgb(img->data, img->width, img->height, scale, srcW_, srcH_);
   LibRaw::dcraw_clear_mem(img);
   return true;
 }
