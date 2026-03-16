@@ -644,10 +644,16 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
 void EditView::regenThumbnail(int64_t photoId,
                               catalog::EditSettings s,
                               std::string srcPath) {
-  // Decode source file's embedded JPEG
+  // Always persist settings first — independent of whether thumbnail regen succeeds.
+  {
+    std::lock_guard lk(repo_.db().mutex());
+    repo_.updateEditSettings(photoId, s.toJson());
+  }
+
+  // Best-effort thumbnail regeneration; failures only skip the thumb-path update.
   const auto dec = import_ns::RawDecoder::decode(srcPath);
   if (!dec.ok || dec.thumbJpeg.empty()) {
-    spdlog::warn("EditView::regenThumbnail: decode failed for {}", srcPath);
+    spdlog::warn("EditView::regenThumbnail: no embedded JPEG for {}", srcPath);
     saveDone_ = true;
     return;
   }
@@ -718,17 +724,23 @@ void EditView::regenThumbnail(int64_t photoId,
 
   // Write thumbnail file
   const std::string thumbDir = util::cacheDir() + "/thumbs_edit";
-  fs::create_directories(thumbDir);
+  std::error_code ec;
+  fs::create_directories(thumbDir, ec);
+  if (!fs::is_directory(thumbDir)) {
+    spdlog::warn("EditView: cannot create thumb dir '{}': {}", thumbDir,
+                 ec ? ec.message() : "not a directory");
+    saveDone_ = true;
+    return;
+  }
   const std::string thumbPath = thumbDir + "/" + std::to_string(photoId) + ".jpg";
   {
     std::ofstream f(thumbPath, std::ios::binary);
     f.write(reinterpret_cast<const char*>(thumbJpeg.data()), (std::streamsize)thumbJpeg.size());
   }
 
-  // Update DB under lock
+  // Update DB under lock — edit_settings already saved; update thumb path.
   {
     std::lock_guard lk(repo_.db().mutex());
-    repo_.updateEditSettings(photoId, s.toJson());
     repo_.updateThumb(photoId, thumbPath, thumbW, thumbH, 0);
   }
   saveDone_ = true;
