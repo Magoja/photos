@@ -106,6 +106,14 @@ class EditView {
 
   void startSave();
 
+  // render sub-steps (called in order from render())
+  bool handleKeyCapture(ImVec2 scr);
+  void renderPreviewArea(ImVec2 scr, float previewW);
+  void renderControlPanel(ImVec2 scr, float previewW);
+  void renderModeTabs();
+  bool renderSaveButtons(ImVec2 scr);
+  void pollSaveCompletion();
+
   void renderAdjustPanel();
   void renderCropPanel();
   void renderStraightenBar(float previewW, float screenH);

@@ -748,19 +748,11 @@ void EditView::startSave() {
   });
 }
 
-// ── render ────────────────────────────────────────────────────────────────────
+// ── render sub-steps ──────────────────────────────────────────────────────────
 
-void EditView::render() {
-  if (!open_) {
-    return;
-  }
-
-  const ImGuiIO& io  = ImGui::GetIO();
-  const ImVec2   scr = io.DisplaySize;
-  const float    panelW = 300.f;
-  const float    previewW = scr.x - panelW;
-
-  // Full-screen capture window (transparent background, handles keys)
+// Opens a transparent full-screen window that captures keyboard shortcuts.
+// Returns true if the view was closed and the caller should return immediately.
+bool EditView::handleKeyCapture(ImVec2 scr) {
   ImGui::SetNextWindowPos({0.f, 0.f});
   ImGui::SetNextWindowSize(scr);
   ImGui::SetNextWindowBgAlpha(0.f);
@@ -771,40 +763,93 @@ void EditView::render() {
 
   const bool skipKeys = justOpened_;
   justOpened_ = false;
-  if (!io.WantTextInput && !skipKeys) {
+  bool closed = false;
+  if (!ImGui::GetIO().WantTextInput && !skipKeys) {
     if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
       if (mode_ == EditMode::Crop) {
         setMode(EditMode::Adjust);
       } else {
         settings_ = saved_;
-        ImGui::End();
-        close();
-        return;
+        closed = true;
       }
     }
     if (ImGui::IsKeyPressed(ImGuiKey_F)) {
-      ImGui::End();
-      close();
-      return;
+      closed = true;
     }
   }
   ImGui::End();
+  if (closed) {
+    close();
+  }
+  return closed;
+}
 
-  // Overlay + preview drawn to foreground list — renders above all ImGui windows.
-  // In Crop mode, reserve the bottom 64 px for the straighten bar.
+// Renders the preview image into the foreground draw list.
+// In Crop mode, reserves space at the bottom for the straighten bar.
+void EditView::renderPreviewArea(ImVec2 scr, float previewW) {
   constexpr float kStraightenBarH = 64.f;
   const float previewAreaH = (mode_ == EditMode::Crop) ? scr.y - kStraightenBarH : scr.y;
   ImDrawList* const fgDl = ImGui::GetForegroundDrawList();
   fgDl->AddRectFilled({0.f, 0.f}, {previewW, previewAreaH}, IM_COL32(0, 0, 0, 230));
   drawPreview(fgDl, {0.f, 0.f}, {previewW, previewAreaH});
-
   if (mode_ == EditMode::Crop) {
     renderStraightenBar(previewW, scr.y);
   }
+}
 
-  // Right control panel — forced to front each frame, but only when no item is
-  // being dragged.  SetNextWindowFocus() → FocusWindow() → SetActiveID(0) which
-  // would kill an in-progress slider drag on the straighten bar every frame.
+// Renders the tab bar (Adjust / Crop) with their respective control panels.
+void EditView::renderModeTabs() {
+  if (!ImGui::BeginTabBar("##EditModeTab")) {
+    return;
+  }
+  const bool syncAdj  = tabSyncNeeded_ && mode_ == EditMode::Adjust;
+  const bool syncCrop = tabSyncNeeded_ && mode_ == EditMode::Crop;
+  tabSyncNeeded_ = false;
+
+  if (ImGui::BeginTabItem("Adjust", nullptr, syncAdj ? ImGuiTabItemFlags_SetSelected : 0)) {
+    if (mode_ != EditMode::Adjust) { previewDirty_ = true; }
+    mode_ = EditMode::Adjust;
+    renderAdjustPanel();
+    ImGui::EndTabItem();
+  }
+  if (ImGui::BeginTabItem("Crop", nullptr, syncCrop ? ImGuiTabItemFlags_SetSelected : 0)) {
+    if (mode_ != EditMode::Crop) { previewDirty_ = true; }
+    mode_ = EditMode::Crop;
+    renderCropPanel();
+    ImGui::EndTabItem();
+  }
+  ImGui::EndTabBar();
+}
+
+// Renders pinned Save / Cancel buttons at the bottom of the control panel.
+// Returns true if Cancel was pressed (caller must close the window first).
+bool EditView::renderSaveButtons(ImVec2 scr) {
+  ImGui::SetCursorPosY(scr.y - 52.f);
+  ImGui::Separator();
+  ImGui::Spacing();
+  ImGui::BeginDisabled(saving_);
+  if (ImGui::Button("Save", {130.f, 0.f})) {
+    startSave();
+  }
+  ImGui::SameLine();
+  const bool cancelled = ImGui::Button("Cancel", {130.f, 0.f});
+  ImGui::EndDisabled();
+  if (saving_) {
+    ImGui::Text("Saving...");
+  }
+  if (cancelled) {
+    settings_ = saved_;
+    close();
+  }
+  return cancelled;
+}
+
+// Positions and opens the right-hand control panel window, then renders its
+// contents (mode tabs + save buttons).
+// SetNextWindowFocus() is guarded by IsAnyItemActive() to avoid killing
+// an in-progress slider drag on the straighten bar every frame.
+void EditView::renderControlPanel(ImVec2 scr, float previewW) {
+  const float panelW = scr.x - previewW;
   ImGui::SetNextWindowPos({previewW, 0.f});
   ImGui::SetNextWindowSize({panelW, scr.y});
   ImGui::SetNextWindowBgAlpha(0.95f);
@@ -814,67 +859,44 @@ void EditView::render() {
   ImGui::Begin("##editpanel", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
+  renderModeTabs();
+  renderSaveButtons(scr);
+  ImGui::End();
+}
 
-  if (ImGui::BeginTabBar("##EditModeTab")) {
-    const bool syncAdj  = tabSyncNeeded_ && mode_ == EditMode::Adjust;
-    const bool syncCrop = tabSyncNeeded_ && mode_ == EditMode::Crop;
-    tabSyncNeeded_ = false;
-
-    if (ImGui::BeginTabItem("Adjust", nullptr,
-                            syncAdj ? ImGuiTabItemFlags_SetSelected : 0)) {
-      if (mode_ != EditMode::Adjust) { previewDirty_ = true; }
-      mode_ = EditMode::Adjust;
-      renderAdjustPanel();
-      ImGui::EndTabItem();
-    }
-    if (ImGui::BeginTabItem("Crop", nullptr,
-                            syncCrop ? ImGuiTabItemFlags_SetSelected : 0)) {
-      if (mode_ != EditMode::Crop) { previewDirty_ = true; }
-      mode_ = EditMode::Crop;
-      renderCropPanel();
-      ImGui::EndTabItem();
-    }
-    ImGui::EndTabBar();
-  }
-
-  // Save / Cancel buttons pinned near bottom
-  ImGui::SetCursorPosY(scr.y - 52.f);
-  ImGui::Separator();
-  ImGui::Spacing();
-  ImGui::BeginDisabled(saving_);
-  if (ImGui::Button("Save", {130.f, 0.f})) {
-    startSave();
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("Cancel", {130.f, 0.f})) {
-    settings_ = saved_;
-    ImGui::EndDisabled();
-    ImGui::End();
-    close();
+// Joins the save thread and fires the saved callback once the background
+// thumbnail write completes.
+void EditView::pollSaveCompletion() {
+  if (!saving_ || !saveDone_.load()) {
     return;
   }
-  ImGui::EndDisabled();
-  if (saving_) {
-    ImGui::Text("Saving...");
+  saveThread_.join();
+  saving_   = false;
+  saveDone_ = false;
+  pendingEvictId_ = photoId_;
+  if (savedCb_) {
+    savedCb_(photoId_);
   }
-
-  ImGui::End();
-
-  // Poll save completion
-  if (saving_ && saveDone_.load()) {
-    saveThread_.join();
-    saving_ = false;
-    saveDone_ = false;
-    pendingEvictId_ = photoId_;
-    if (savedCb_) {
-      savedCb_(photoId_);
-    }
-    if (mode_ == EditMode::Crop) {
-      saved_ = settings_;  // update Cancel baseline; stay in edit view
-    } else {
-      close();
-    }
+  if (mode_ == EditMode::Crop) {
+    saved_ = settings_;  // update Cancel baseline; stay in edit view
+  } else {
+    close();
   }
+}
+
+// ── render ────────────────────────────────────────────────────────────────────
+
+void EditView::render() {
+  if (!open_) { return; }
+
+  const ImVec2  scr      = ImGui::GetIO().DisplaySize;
+  const float   panelW   = 300.f;
+  const float   previewW = scr.x - panelW;
+
+  if (handleKeyCapture(scr)) { return; }
+  renderPreviewArea(scr, previewW);
+  renderControlPanel(scr, previewW);
+  pollSaveCompletion();
 }
 
 }  // namespace ui
