@@ -37,6 +37,9 @@ static catalog::EditSettings mergeSettings(const catalog::EditSettings& src,
 }
 
 void MetaSyncDialog::performSync() {
+  // Load all records before opening the write transaction.
+  // SQLite refuses to COMMIT when a SELECT statement is still "active"
+  // (stepped to SQLITE_ROW but not yet reset), so we must drain all reads first.
   const auto srcRec = repo_.findById(primaryId_);
   if (!srcRec) {
     return;
@@ -44,7 +47,10 @@ void MetaSyncDialog::performSync() {
   const catalog::EditSettings srcSettings =
     catalog::EditSettings::fromJson(srcRec->editSettings);
 
-  auto txn = repo_.db().transaction();
+  // Pre-load merged JSON for each target (all reads before the write transaction)
+  struct IdAndJson { int64_t id; std::string json; };
+  std::vector<IdAndJson> updates;
+  updates.reserve(targetIds_.size());
   for (const int64_t id : targetIds_) {
     const auto tgtRec = repo_.findById(id);
     if (!tgtRec) {
@@ -54,7 +60,13 @@ void MetaSyncDialog::performSync() {
       catalog::EditSettings::fromJson(tgtRec->editSettings);
     const catalog::EditSettings merged =
       mergeSettings(srcSettings, tgtSettings, syncAdjust_, syncCrop_);
-    repo_.updateEditSettings(id, merged.toJson());
+    updates.push_back({id, merged.toJson()});
+  }
+
+  // Write phase: no reads inside the transaction
+  auto txn = repo_.db().transaction();
+  for (const auto& [id, json] : updates) {
+    repo_.updateEditSettings(id, json);
   }
   txn.commit();
 
