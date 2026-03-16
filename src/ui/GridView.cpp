@@ -1,6 +1,7 @@
 #include "GridView.h"
 #include "imgui.h"
 #include <algorithm>
+#include <ranges>
 
 namespace ui {
 
@@ -10,6 +11,8 @@ GridView::GridView(catalog::PhotoRepository& repo, TextureManager& texMgr)
 void GridView::loadFolder(int64_t folderId, FilterMode filter) {
   folderId_ = folderId;
   filter_ = filter;
+  primaryId_ = 0;
+  selectedIds_.clear();
   reload();
 }
 
@@ -22,6 +25,58 @@ void GridView::reload() {
 
 void GridView::onThumbReady(int64_t photoId, const std::vector<uint8_t>& jpegBytes) {
   texMgr_.upload(photoId, jpegBytes);
+}
+
+// ── Selection helpers ──────────────────────────────────────────────────────────
+
+void GridView::applyRangeSelect(int64_t fromId, int64_t toId) {
+  const auto itA = std::ranges::find(photoIds_, fromId);
+  const auto itB = std::ranges::find(photoIds_, toId);
+  if (itA == photoIds_.end() || itB == photoIds_.end()) {
+    return;
+  }
+  const auto lo = std::min(itA, itB);
+  const auto hi = std::max(itA, itB);
+  selectedIds_.clear();
+  for (auto it = lo; it <= hi; ++it) {
+    if (*it != fromId) {
+      selectedIds_.insert(*it);
+    }
+  }
+}
+
+void GridView::handleCellClick(int64_t pid) {
+  const auto& io = ImGui::GetIO();
+  if (io.KeyShift && primaryId_ > 0) {
+    applyRangeSelect(primaryId_, pid);
+  } else if (io.KeySuper) {
+    if (pid == primaryId_) {
+      // Cmd+click on primary: promote first of selectedIds_ to primary
+      if (!selectedIds_.empty()) {
+        const int64_t next = *selectedIds_.begin();
+        selectedIds_.erase(next);
+        selectedIds_.insert(primaryId_);
+        primaryId_ = next;
+      } else {
+        primaryId_ = 0;
+      }
+    } else if (selectedIds_.count(pid)) {
+      selectedIds_.erase(pid);
+    } else {
+      if (primaryId_ == 0) {
+        primaryId_ = pid;
+      } else {
+        selectedIds_.insert(pid);
+      }
+    }
+  } else {
+    // Plain click: clear multi-selection
+    selectedIds_.clear();
+    primaryId_ = pid;
+    if (onSelectCb_) {
+      onSelectCb_(pid);
+    }
+  }
 }
 
 // ── Layout helpers ────────────────────────────────────────────────────────────
@@ -48,6 +103,14 @@ static std::pair<float, float> computeLetterboxSize(int tw, int th, float thumbW
 // ── render ────────────────────────────────────────────────────────────────────
 
 void GridView::render() {
+  // "N selected" label when multiple photos are selected
+  const size_t totalSel = selectionCount();
+  if (totalSel >= 2) {
+    ImGui::TextColored({0.4f, 0.8f, 1.f, 1.f}, "%zu selected", totalSel);
+    ImGui::SameLine();
+    ImGui::Dummy({0.f, 0.f});
+  }
+
   float thumbW = kThumbBase * thumbScale_;
   float thumbH = thumbW * (4.f / 6.f);
   float cellW = thumbW + kThumbPad * 2.f;
@@ -82,7 +145,9 @@ void GridView::render() {
         thumbMissCb_(pid, repo_.getThumbPath(pid), repo_.getThumbMicroPath(pid));
       }
 
-      bool sel = (pid == selectedId_);
+      const bool isPrimary  = (pid == primaryId_);
+      const bool isOtherSel = (selectedIds_.count(pid) > 0);
+
       const auto* displayTex = stdLoaded   ? stdTex
                              : microLoaded ? microTex
                              : texMgr_.placeholder();
@@ -101,7 +166,9 @@ void GridView::render() {
 
       ImDrawList* dl = ImGui::GetWindowDrawList();
 
-      ImU32 bgCol = sel ? IM_COL32(80, 60, 10, 255) : IM_COL32(35, 35, 35, 255);
+      ImU32 bgCol = isPrimary  ? IM_COL32(80, 60, 10, 255)
+                  : isOtherSel ? IM_COL32(10, 40, 80, 255)
+                  : IM_COL32(35, 35, 35, 255);
       dl->AddRectFilled(cellPos, {cellPos.x + cellW, cellPos.y + cellH}, bgCol);
 
       float offX = (thumbW - imgW) * 0.5f + kThumbPad;
@@ -110,8 +177,11 @@ void GridView::render() {
       ImVec2 imgMax = {imgMin.x + imgW, imgMin.y + imgH};
       dl->AddImage(reinterpret_cast<ImTextureID>(displayTex), imgMin, imgMax);
 
-      if (sel) {
+      if (isPrimary) {
         dl->AddRect(cellPos, {cellPos.x + cellW, cellPos.y + cellH}, IM_COL32(255, 200, 50, 255),
+                    0.f, 0, 2.f);
+      } else if (isOtherSel) {
+        dl->AddRect(cellPos, {cellPos.x + cellW, cellPos.y + cellH}, IM_COL32(80, 160, 255, 255),
                     0.f, 0, 2.f);
       }
 
@@ -123,16 +193,10 @@ void GridView::render() {
       }
 
       if (clicked) {
-        selectedId_ = pid;
-        if (onSelectCb_) {
-          onSelectCb_(pid);
-        }
+        handleCellClick(pid);
       }
       if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
-        selectedId_ = pid;
-        if (onSelectCb_) {
-          onSelectCb_(pid);
-        }
+        handleCellClick(pid);
       }
 
       ImGui::PopID();

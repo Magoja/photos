@@ -454,6 +454,21 @@ int main(int /*argc*/, char** /*argv*/) {
       if (filterBar.render()) {
         grid.loadFolder(folderPanel.selectedFolder(), filterBar.mode());
       }
+      // Multi-selection toolbar: show when ≥2 photos selected
+      if (grid.selectionCount() >= 2) {
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.8f, 1.f));
+        if (ImGui::Button("Sync Metadata")) {
+          // wired in Task 17
+        }
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.3f, 1.f));
+        if (ImGui::Button("Export")) {
+          // wired in Task 18
+        }
+        ImGui::PopStyleColor();
+      }
       ImGui::Separator();
       grid.render();
       ImGui::End();
