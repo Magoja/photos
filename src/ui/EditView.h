@@ -102,7 +102,8 @@ class EditView {
 
   void regenThumbnail(int64_t photoId,
                       catalog::EditSettings s,
-                      std::string srcPath);
+                      std::vector<uint8_t> srcRgb,
+                      int srcW, int srcH);
 
   void startSave();
 

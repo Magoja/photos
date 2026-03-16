@@ -668,45 +668,22 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
 
 void EditView::regenThumbnail(int64_t photoId,
                               catalog::EditSettings s,
-                              std::string srcPath) {
+                              std::vector<uint8_t> srcRgb,
+                              int srcW, int srcH) {
   // Always persist settings first — independent of whether thumbnail regen succeeds.
   {
     std::lock_guard lk(repo_.db().mutex());
     repo_.updateEditSettings(photoId, s.toJson());
   }
 
-  // Best-effort thumbnail regeneration; failures only skip the thumb-path update.
-  const auto dec = import_ns::RawDecoder::decode(srcPath);
-  if (!dec.ok || dec.thumbJpeg.empty()) {
-    spdlog::warn("EditView::regenThumbnail: no embedded JPEG for {}", srcPath);
+  if (srcRgb.empty()) {
     saveDone_ = true;
     return;
   }
 
-  // Decompress to RGB
-  tjhandle tj = tjInitDecompress();
-  if (!tj) {
-    saveDone_ = true;
-    return;
-  }
-  int srcW = 0, srcH = 0, subsamp = 0, colorspace = 0;
-  if (tjDecompressHeader3(tj, dec.thumbJpeg.data(), (unsigned long)dec.thumbJpeg.size(),
-                          &srcW, &srcH, &subsamp, &colorspace) < 0) {
-    tjDestroy(tj);
-    saveDone_ = true;
-    return;
-  }
-  std::vector<uint8_t> rgb(srcW * srcH * 3);
-  if (tjDecompress2(tj, dec.thumbJpeg.data(), (unsigned long)dec.thumbJpeg.size(),
-                    rgb.data(), srcW, 0, srcH, TJPF_RGB, TJFLAG_FASTDCT) < 0) {
-    tjDestroy(tj);
-    saveDone_ = true;
-    return;
-  }
-  tjDestroy(tj);
-
-  // Apply adjustments
-  auto edited = applyEditsToPixels(rgb, srcW, srcH, s);
+  // Apply adjustments to the same LibRaw-decoded pixels used for the preview,
+  // so the thumbnail matches both the preview and the exported JPEG exactly.
+  auto edited = applyEditsToPixels(srcRgb, srcW, srcH, s);
 
   // Apply crop + straighten
   int cropW = 0, cropH = 0;
@@ -772,16 +749,19 @@ void EditView::regenThumbnail(int64_t photoId,
 }
 
 void EditView::startSave() {
-  const auto rec = repo_.findById(photoId_);
-  if (!rec) {
+  if (originalRgb_.empty()) {
     return;
   }
-  const std::string srcPath = repo_.fullPathFor(rec->folderId, rec->filename);
   saving_ = true;
   saveDone_ = false;
+  // Pass copies of the already-decoded LibRaw pixels so regenThumbnail uses
+  // the same source as the preview — no camera-JPEG re-decode on the save thread.
   const catalog::EditSettings settingsCopy = settings_;
-  saveThread_ = std::thread([this, srcPath, settingsCopy]() {
-    regenThumbnail(photoId_, settingsCopy, srcPath);
+  const std::vector<uint8_t>  rgbCopy      = originalRgb_;
+  const int                   wCopy        = srcW_;
+  const int                   hCopy        = srcH_;
+  saveThread_ = std::thread([this, settingsCopy, rgbCopy, wCopy, hCopy]() {
+    regenThumbnail(photoId_, settingsCopy, rgbCopy, wCopy, hCopy);
   });
 }
 
