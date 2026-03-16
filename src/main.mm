@@ -365,38 +365,32 @@ static std::string formatFileSize(int64_t bytes) {
 }
 
 static std::string buildPhotoMetaString(const catalog::PhotoRecord& rec) {
-  std::string s = rec.filename;
+  std::vector<std::string> fields;
+  fields.push_back(rec.filename);
 
-  // Date: first 10 chars of ISO captureTime (YYYY-MM-DD)
   if (rec.captureTime.size() >= 10) {
-    s += "   \xe2\x80\xa2   ";  // bullet separator (UTF-8 U+2022)
-    s += rec.captureTime.substr(0, 10);
+    fields.push_back(rec.captureTime.substr(0, 10));
   }
 
-  // Camera make + model
   if (!rec.cameraMake.empty() || !rec.cameraModel.empty()) {
-    s += "   \xe2\x80\xa2   ";
-    s += rec.cameraMake;
-    if (!rec.cameraMake.empty() && !rec.cameraModel.empty()) { s += ' '; }
-    s += rec.cameraModel;
+    fields.push_back(rec.cameraMake + ((!rec.cameraMake.empty() && !rec.cameraModel.empty()) ? " " : "") + rec.cameraModel);
   }
 
-  // Pixel dimensions
   if (rec.widthPx > 0 && rec.heightPx > 0) {
     char buf[32];
-    std::snprintf(buf, sizeof(buf), "%d \xc3\x97 %d", rec.widthPx, rec.heightPx);  // ×
-    s += "   \xe2\x80\xa2   ";
-    s += buf;
+    std::snprintf(buf, sizeof(buf), "%d x %d", rec.widthPx, rec.heightPx);
+    fields.push_back(buf);
   }
 
-  // File size
   const std::string sz = formatFileSize(rec.fileSize);
-  if (!sz.empty()) {
-    s += "   \xe2\x80\xa2   ";
-    s += sz;
-  }
+  if (!sz.empty()) { fields.push_back(sz); }
 
-  return s;
+  std::string result;
+  for (const auto& f : fields) {
+    if (!result.empty()) { result += "   |   "; }
+    result += f;
+  }
+  return result;
 }
 
 static void renderStatusBar(RenderCtx& ctx) {
