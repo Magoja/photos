@@ -5,6 +5,7 @@
 #include "import/RawDecoder.h"
 #include "util/Platform.h"
 
+#include <libraw/libraw.h>
 #include <turbojpeg.h>
 #include <spdlog/spdlog.h>
 
@@ -143,41 +144,35 @@ bool EditView::loadSourcePixels(int64_t photoId) {
   srcW_ = 0;
   srcH_ = 0;
 
-  // Always decode from the original source file so we get unedited pixels.
-  // thumb_path may point to an edit-baked thumbnail (regenThumbnail overwrites
-  // it), which would cause double-application of exposure/color adjustments.
   const auto rec = repo_.findById(photoId);
   if (!rec) {
     return false;
   }
   const std::string srcPath = repo_.fullPathFor(rec->folderId, rec->filename);
-  const auto dec = import_ns::RawDecoder::decode(srcPath);
-  if (!dec.ok || dec.thumbJpeg.empty()) {
-    return false;
-  }
-  const std::vector<uint8_t>& jpegBytes = dec.thumbJpeg;
 
-  // Decompress JPEG → RGB
-  tjhandle tj = tjInitDecompress();
-  if (!tj) {
+  // Full RAW decode using the same pipeline as Exporter so the preview tonality
+  // matches the exported file exactly.  half_size=1 halves linear dimensions for
+  // a fast interactive preview without altering white balance, gamma, or color.
+  auto raw = std::make_unique<LibRaw>();
+  raw->imgdata.params.half_size     = 1;
+  raw->imgdata.params.output_bps    = 8;
+  raw->imgdata.params.use_camera_wb = 1;
+  if (raw->open_file(srcPath.c_str()) != LIBRAW_SUCCESS ||
+      raw->unpack()                    != LIBRAW_SUCCESS ||
+      raw->dcraw_process()             != LIBRAW_SUCCESS) {
+    spdlog::warn("EditView: LibRaw decode failed for {}", srcPath);
     return false;
   }
-  int w = 0, h = 0, subsamp = 0, colorspace = 0;
-  if (tjDecompressHeader3(tj, jpegBytes.data(), (unsigned long)jpegBytes.size(),
-                          &w, &h, &subsamp, &colorspace) < 0) {
-    tjDestroy(tj);
+  libraw_processed_image_t* img = raw->dcraw_make_mem_image();
+  if (!img || img->type != LIBRAW_IMAGE_BITMAP || img->colors != 3) {
+    if (img) { LibRaw::dcraw_clear_mem(img); }
+    spdlog::warn("EditView: unexpected LibRaw image format for {}", srcPath);
     return false;
   }
-  std::vector<uint8_t> rgb(w * h * 3);
-  if (tjDecompress2(tj, jpegBytes.data(), (unsigned long)jpegBytes.size(),
-                    rgb.data(), w, 0, h, TJPF_RGB, TJFLAG_FASTDCT) < 0) {
-    tjDestroy(tj);
-    return false;
-  }
-  tjDestroy(tj);
-  originalRgb_ = std::move(rgb);
-  srcW_ = w;
-  srcH_ = h;
+  srcW_ = img->width;
+  srcH_ = img->height;
+  originalRgb_.assign(img->data, img->data + static_cast<size_t>(srcW_ * srcH_ * 3));
+  LibRaw::dcraw_clear_mem(img);
   return true;
 }
 
