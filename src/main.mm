@@ -68,6 +68,47 @@ static CAMetalLayer* getMetalLayer(SDL_Window* window, id<MTLDevice> device) {
   return layer;
 }
 
+// ── Free helpers (anonymous namespace) ───────────────────────────────────────
+namespace {
+
+static bool loadAndDecodeJpeg(const std::string& path,
+                               std::vector<uint8_t>& outRgba, int& outW, int& outH) {
+  std::ifstream f(path, std::ios::binary);
+  if (!f) { return false; }
+  std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)), {});
+  if (bytes.empty()) { return false; }
+  return ui::TextureManager::decodeJpeg(bytes, outRgba, outW, outH);
+}
+
+static std::vector<int64_t> buildSelectionList(
+    const std::unordered_set<int64_t>& selected, int64_t primaryId) {
+  std::vector<int64_t> ids(selected.begin(), selected.end());
+  ids.push_back(primaryId);
+  return ids;
+}
+
+static void openOrSwitchEditMode(ui::FullscreenView& fullscreen,
+                                  ui::EditView& editView,
+                                  int64_t selId,
+                                  ui::EditMode mode) {
+  const int64_t target = fullscreen.isOpen() ? fullscreen.currentId() : selId;
+  fullscreen.close();
+  if (editView.isOpen()) {
+    editView.setMode(mode);
+  } else {
+    editView.open(target);
+    editView.setMode(mode);
+  }
+}
+
+static void applyFilterMode(ui::FilterBar& filterBar, ui::GridView& grid,
+                             ui::FolderTreePanel& folderPanel, ui::FilterMode mode) {
+  filterBar.setMode(mode);
+  grid.loadFolder(folderPanel.selectedFolder(), mode);
+}
+
+} // namespace
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 int main(int /*argc*/, char** /*argv*/) {
   // ── Logging ──────────────────────────────────────────────────────────────
@@ -177,35 +218,22 @@ int main(int /*argc*/, char** /*argv*/) {
                       &thumbResQ, &repo, &thumbCache, &db]() {
       // Micro load (fast path — tiny file, nearly always cache-hit after first import)
       if (!microPath.empty()) {
-        std::ifstream fm(microPath, std::ios::binary);
-        if (fm) {
-          std::vector<uint8_t> mb((std::istreambuf_iterator<char>(fm)), {});
-          if (!mb.empty()) {
-            std::vector<uint8_t> rgba;
-            int w = 0, h = 0;
-            if (ui::TextureManager::decodeJpeg(mb, rgba, w, h)) {
-              std::lock_guard lk(thumbMtx);
-              thumbResQ.push({pid + ui::GridView::kMicroOffset, std::move(rgba), w, h});
-            }
-          }
+        std::vector<uint8_t> rgba;
+        int w = 0, h = 0;
+        if (loadAndDecodeJpeg(microPath, rgba, w, h)) {
+          std::lock_guard lk(thumbMtx);
+          thumbResQ.push({pid + ui::GridView::kMicroOffset, std::move(rgba), w, h});
         }
       }
 
       // Standard load: fast path if file already cached on disk
       if (!path.empty()) {
-        std::ifstream f(path, std::ios::binary);
-        if (f) {
-          std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)), {});
-          if (!bytes.empty()) {
-            std::vector<uint8_t> rgba;
-            int w = 0, h = 0;
-            if (!ui::TextureManager::decodeJpeg(bytes, rgba, w, h)) {
-              return;
-            }
-            std::lock_guard lk(thumbMtx);
-            thumbResQ.push({pid, std::move(rgba), w, h});
-            return;
-          }
+        std::vector<uint8_t> rgba;
+        int w = 0, h = 0;
+        if (loadAndDecodeJpeg(path, rgba, w, h)) {
+          std::lock_guard lk(thumbMtx);
+          thumbResQ.push({pid, std::move(rgba), w, h});
+          return;
         }
       }
 
@@ -235,17 +263,9 @@ int main(int /*argc*/, char** /*argv*/) {
       if (newPath.empty()) {
         return;
       }
-      std::ifstream f2(newPath, std::ios::binary);
-      if (!f2) {
-        return;
-      }
-      std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f2)), {});
-      if (!bytes.empty()) {
-        std::vector<uint8_t> rgba;
-        int w = 0, h = 0;
-        if (!ui::TextureManager::decodeJpeg(bytes, rgba, w, h)) {
-          return;
-        }
+      std::vector<uint8_t> rgba;
+      int w = 0, h = 0;
+      if (loadAndDecodeJpeg(newPath, rgba, w, h)) {
         std::lock_guard lk(thumbMtx);
         thumbResQ.push({pid, std::move(rgba), w, h});
       }
@@ -361,23 +381,10 @@ int main(int /*argc*/, char** /*argv*/) {
           fullscreen.open(selId);
         }
         if (ImGui::IsKeyPressed(ImGuiKey_D)) {
-          const int64_t target = fullscreen.isOpen() ? fullscreen.currentId() : selId;
-          fullscreen.close();
-          if (editView.isOpen()) {
-            editView.setMode(ui::EditMode::Adjust);
-          } else {
-            editView.open(target);
-          }
+          openOrSwitchEditMode(fullscreen, editView, selId, ui::EditMode::Adjust);
         }
         if (ImGui::IsKeyPressed(ImGuiKey_R)) {
-          const int64_t target = fullscreen.isOpen() ? fullscreen.currentId() : selId;
-          fullscreen.close();
-          if (editView.isOpen()) {
-            editView.setMode(ui::EditMode::Crop);
-          } else {
-            editView.open(target);
-            editView.setMode(ui::EditMode::Crop);
-          }
+          openOrSwitchEditMode(fullscreen, editView, selId, ui::EditMode::Crop);
         }
       }
 
@@ -388,9 +395,7 @@ int main(int /*argc*/, char** /*argv*/) {
             importDlg.open("", libraryRoot, thumbDir);
           }
           if (ImGui::MenuItem("Export Selected", nullptr, false, grid.primaryId() > 0)) {
-            std::vector<int64_t> allSel(grid.selectedIds().begin(), grid.selectedIds().end());
-            allSel.push_back(grid.primaryId());
-            exportDlg.open(grid.primaryId(), std::move(allSel));
+            exportDlg.open(grid.primaryId(), buildSelectionList(grid.selectedIds(), grid.primaryId()));
           }
           ImGui::Separator();
           if (ImGui::MenuItem("Settings...")) {
@@ -406,12 +411,10 @@ int main(int /*argc*/, char** /*argv*/) {
           bool isAll = (filterBar.mode() == ui::FilterMode::All);
           bool isPicked = (filterBar.mode() == ui::FilterMode::Picked);
           if (ImGui::MenuItem("All Photos", nullptr, isAll)) {
-            filterBar.setMode(ui::FilterMode::All);
-            grid.loadFolder(folderPanel.selectedFolder(), ui::FilterMode::All);
+            applyFilterMode(filterBar, grid, folderPanel, ui::FilterMode::All);
           }
           if (ImGui::MenuItem("Picked Only", nullptr, isPicked)) {
-            filterBar.setMode(ui::FilterMode::Picked);
-            grid.loadFolder(folderPanel.selectedFolder(), ui::FilterMode::Picked);
+            applyFilterMode(filterBar, grid, folderPanel, ui::FilterMode::Picked);
           }
           ImGui::EndMenu();
         }
@@ -472,17 +475,13 @@ int main(int /*argc*/, char** /*argv*/) {
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.8f, 1.f));
         if (ImGui::Button("Sync Metadata")) {
-          std::vector<int64_t> allSel(grid.selectedIds().begin(), grid.selectedIds().end());
-          allSel.push_back(grid.primaryId());
-          metaSyncDlg.open(grid.primaryId(), std::move(allSel));
+          metaSyncDlg.open(grid.primaryId(), buildSelectionList(grid.selectedIds(), grid.primaryId()));
         }
         ImGui::PopStyleColor();
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.3f, 1.f));
         if (ImGui::Button("Export")) {
-          std::vector<int64_t> allSel(grid.selectedIds().begin(), grid.selectedIds().end());
-          allSel.push_back(grid.primaryId());
-          exportDlg.open(grid.primaryId(), std::move(allSel));
+          exportDlg.open(grid.primaryId(), buildSelectionList(grid.selectedIds(), grid.primaryId()));
         }
         ImGui::PopStyleColor();
       }
