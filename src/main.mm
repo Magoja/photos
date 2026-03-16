@@ -353,6 +353,52 @@ static void renderPhotosPanel(RenderCtx& ctx) {
   ImGui::End();
 }
 
+static std::string formatFileSize(int64_t bytes) {
+  if (bytes <= 0) { return {}; }
+  char buf[32];
+  if (bytes >= 1024 * 1024) {
+    std::snprintf(buf, sizeof(buf), "%.1f MB", bytes / (1024.0 * 1024.0));
+  } else {
+    std::snprintf(buf, sizeof(buf), "%.0f KB", bytes / 1024.0);
+  }
+  return buf;
+}
+
+static std::string buildPhotoMetaString(const catalog::PhotoRecord& rec) {
+  std::string s = rec.filename;
+
+  // Date: first 10 chars of ISO captureTime (YYYY-MM-DD)
+  if (rec.captureTime.size() >= 10) {
+    s += "   \xe2\x80\xa2   ";  // bullet separator (UTF-8 U+2022)
+    s += rec.captureTime.substr(0, 10);
+  }
+
+  // Camera make + model
+  if (!rec.cameraMake.empty() || !rec.cameraModel.empty()) {
+    s += "   \xe2\x80\xa2   ";
+    s += rec.cameraMake;
+    if (!rec.cameraMake.empty() && !rec.cameraModel.empty()) { s += ' '; }
+    s += rec.cameraModel;
+  }
+
+  // Pixel dimensions
+  if (rec.widthPx > 0 && rec.heightPx > 0) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%d \xc3\x97 %d", rec.widthPx, rec.heightPx);  // ×
+    s += "   \xe2\x80\xa2   ";
+    s += buf;
+  }
+
+  // File size
+  const std::string sz = formatFileSize(rec.fileSize);
+  if (!sz.empty()) {
+    s += "   \xe2\x80\xa2   ";
+    s += sz;
+  }
+
+  return s;
+}
+
 static void renderStatusBar(RenderCtx& ctx) {
   ImGuiViewport* vp = ImGui::GetMainViewport();
   ImGui::SetNextWindowPos({vp->WorkPos.x, vp->WorkPos.y + vp->WorkSize.y - kStatusH});
@@ -365,9 +411,21 @@ static void renderStatusBar(RenderCtx& ctx) {
                  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings |
                  ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleVar();
-  ImGui::Text("Photos: %lld  |  FPS: %.0f",
-              (long long)ctx.grid.photoCount(), ImGui::GetIO().Framerate);
-  ImGui::SameLine();
+
+  // Left: photo count
+  ImGui::Text("Photos: %lld", (long long)ctx.grid.photoCount());
+
+  // Center: selected photo metadata
+  const int64_t selId = ctx.grid.primaryId();
+  if (selId > 0) {
+    const auto rec = ctx.repo.findById(selId);
+    if (rec) {
+      ImGui::SameLine(0.f, 16.f);
+      ImGui::TextDisabled("%s", buildPhotoMetaString(*rec).c_str());
+    }
+  }
+
+  // Right: zoom slider
   const float sliderW = 150.f;
   ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - sliderW);
   ImGui::SetNextItemWidth(sliderW);
