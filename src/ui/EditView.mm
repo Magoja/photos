@@ -607,8 +607,12 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
   if (mode_ == EditMode::Crop && settings_.crop.angleDeg != 0.f) {
     const float angleRad = settings_.crop.angleDeg * (std::numbers::pi_v<float> / 180.f);
     const float cosA = cosf(angleRad), sinA = sinf(angleRad);
-    const ImVec2 center = {(imgMin.x + imgMax.x) * 0.5f,
-                           (imgMin.y + imgMax.y) * 0.5f};
+    const float imgW = imgMax.x - imgMin.x;
+    const float imgH = imgMax.y - imgMin.y;
+    const ImVec2 center = {
+      imgMin.x + (settings_.crop.x + settings_.crop.w * 0.5f) * imgW,
+      imgMin.y + (settings_.crop.y + settings_.crop.h * 0.5f) * imgH,
+    };
     const auto rotPt = [&](float px, float py) -> ImVec2 {
       const float dx = px - center.x, dy = py - center.y;
       return {center.x + dx * cosA - dy * sinA,
