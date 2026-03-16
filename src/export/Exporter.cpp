@@ -424,7 +424,15 @@ bool Exporter::exportOne(const PhotoRecord& rec, const std::string& destDir) {
 }
 
 void Exporter::run(std::vector<int64_t> ids) {
-  fs::create_directories(preset_.targetPath);
+  std::error_code ec;
+  fs::create_directories(preset_.targetPath, ec);
+  if (!fs::is_directory(preset_.targetPath)) {
+    spdlog::error("Export: output dir unavailable '{}': {}", preset_.targetPath,
+                  ec ? ec.message() : "not a directory");
+    running_ = false;
+    if (doneCb_) { doneCb_(0, static_cast<int>(ids.size())); }
+    return;
+  }
 
   int exported = 0, errors = 0;
   for (int i = 0; i < static_cast<int>(ids.size()); ++i) {

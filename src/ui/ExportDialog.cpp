@@ -40,6 +40,7 @@ void ExportDialog::startExport() {
   gp.quality = 90;
   gp.maxWidth = 0;   // full-res
   gp.maxHeight = 0;
+  gp.targetPath = targetPath_;
 
   exporter_ = std::make_unique<export_ns::Exporter>(repo_, gp);
   exporter_->setProgressCallback([this](int done, int total) {
@@ -96,8 +97,14 @@ void ExportDialog::render() {
     }
     const std::string btnLabel = "Export " + std::to_string(selectedIds_.size()) + " photos";
     if (ImGui::Button(btnLabel.c_str(), {220.f, 0.f})) {
-      fs::create_directories(targetPath_);
-      startExport();
+      std::error_code ec;
+      fs::create_directories(targetPath_, ec);
+      if (!fs::is_directory(targetPath_)) {
+        spdlog::warn("ExportDialog: cannot create target dir '{}': {}", targetPath_,
+                     ec ? ec.message() : "not a directory");
+      } else {
+        startExport();
+      }
     }
     if (!canExport) {
       ImGui::EndDisabled();
