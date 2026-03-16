@@ -66,6 +66,7 @@ PhotoRecord PhotoRepository::rowToPhoto(Stmt& s) {
   p.thumbWidth = s.getInt(c++);
   p.thumbHeight = s.getInt(c++);
   p.thumbMtime = s.getInt64(c++);
+  p.thumbMicroPath = s.getText(c++);
   p.editSettings = s.getText(c++);
   return p;
 }
@@ -266,7 +267,7 @@ std::optional<PhotoRecord> PhotoRepository::findById(int64_t id) {
     "COALESCE(gps_lat,0),COALESCE(gps_lon,0),COALESCE(gps_alt_m,0),"
     "picked,rating,COALESCE(color_label,''),COALESCE(thumb_path,''),"
     "COALESCE(thumb_width,0),COALESCE(thumb_height,0),COALESCE(thumb_mtime,0),"
-    "COALESCE(edit_settings,'{}')"
+    "COALESCE(thumb_micro_path,''),COALESCE(edit_settings,'{}')"
     " FROM photos WHERE id=?");
   s.bind(1, id);
   if (!s.step()) {
@@ -277,6 +278,15 @@ std::optional<PhotoRecord> PhotoRepository::findById(int64_t id) {
 
 std::string PhotoRepository::getThumbPath(int64_t photoId) {
   auto s = db_.prepare("SELECT COALESCE(thumb_path,'') FROM photos WHERE id=?");
+  s.bind(1, photoId);
+  if (s.step()) {
+    return s.getText(0);
+  }
+  return "";
+}
+
+std::string PhotoRepository::getThumbMicroPath(int64_t photoId) {
+  auto s = db_.prepare("SELECT COALESCE(thumb_micro_path,'') FROM photos WHERE id=?");
   s.bind(1, photoId);
   if (s.step()) {
     return s.getText(0);
@@ -316,6 +326,13 @@ std::vector<int64_t> PhotoRepository::queryAll(bool pickedOnly) {
 void PhotoRepository::updatePicked(int64_t id, int picked) {
   auto s = db_.prepare("UPDATE photos SET picked=? WHERE id=?");
   s.bind(1, picked);
+  s.bind(2, id);
+  s.step();
+}
+
+void PhotoRepository::updateThumbMicro(int64_t id, const std::string& path) {
+  auto s = db_.prepare("UPDATE photos SET thumb_micro_path=? WHERE id=?");
+  s.bind(1, path);
   s.bind(2, id);
   s.step();
 }

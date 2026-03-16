@@ -8,8 +8,10 @@ namespace fs = std::filesystem;
 
 namespace catalog {
 
-ThumbnailCache::ThumbnailCache(const std::string& cacheRoot) : root_(cacheRoot) {
+ThumbnailCache::ThumbnailCache(const std::string& cacheRoot)
+  : root_(cacheRoot), microRoot_(cacheRoot + "_micro") {
   fs::create_directories(root_);
+  fs::create_directories(microRoot_);
 }
 
 std::string ThumbnailCache::pathFor(const std::string& hash) const {
@@ -17,6 +19,13 @@ std::string ThumbnailCache::pathFor(const std::string& hash) const {
     return root_ + "/00/" + hash + ".jpg";
   }
   return root_ + "/" + hash.substr(0, 2) + "/" + hash + ".jpg";
+}
+
+std::string ThumbnailCache::microPathFor(const std::string& hash) const {
+  if (hash.size() < 2) {
+    return microRoot_ + "/00/" + hash + ".jpg";
+  }
+  return microRoot_ + "/" + hash.substr(0, 2) + "/" + hash + ".jpg";
 }
 
 std::string ThumbnailCache::lookup(const std::string& hash) const {
@@ -138,6 +147,52 @@ bool ThumbnailCache::generate(int64_t photoId, const std::string& hash,
 
   repo.updateThumb(photoId, path, w, h,
                    (int64_t)std::filesystem::last_write_time(path).time_since_epoch().count());
+  return true;
+}
+
+std::string ThumbnailCache::lookupMicro(const std::string& hash) const {
+  const auto p = microPathFor(hash);
+  return fs::exists(p) ? p : "";
+}
+
+std::string ThumbnailCache::storeMicro(const std::string& hash,
+                                       const std::vector<uint8_t>& jpegBytes) {
+  if (hash.empty() || jpegBytes.empty()) {
+    return "";
+  }
+
+  const auto thumbData = resizeJpeg(jpegBytes, kMicroDim);
+  const auto p = microPathFor(hash);
+  fs::create_directories(fs::path(p).parent_path());
+
+  std::ofstream ofs(p, std::ios::binary);
+  if (!ofs) {
+    spdlog::warn("ThumbnailCache: cannot write micro {}", p);
+    return "";
+  }
+  ofs.write(reinterpret_cast<const char*>(thumbData.data()),
+            static_cast<std::streamsize>(thumbData.size()));
+  return p;
+}
+
+bool ThumbnailCache::generateMicro(int64_t photoId, const std::string& hash,
+                                   const std::vector<uint8_t>& thumbJpeg, PhotoRepository& repo) {
+  if (thumbJpeg.empty()) {
+    return false;
+  }
+
+  const auto existing = lookupMicro(hash);
+  if (!existing.empty()) {
+    repo.updateThumbMicro(photoId, existing);
+    return true;
+  }
+
+  const auto path = storeMicro(hash, thumbJpeg);
+  if (path.empty()) {
+    return false;
+  }
+
+  repo.updateThumbMicro(photoId, path);
   return true;
 }
 

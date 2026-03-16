@@ -12,7 +12,7 @@ class Schema {
   static void apply(Database& db, const std::string& libraryRoot = "");
 
   // Current target schema version
-  static constexpr int kTargetVersion = 2;
+  static constexpr int kTargetVersion = 3;
 };
 
 }  // namespace catalog

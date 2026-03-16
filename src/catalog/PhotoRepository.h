@@ -35,6 +35,7 @@ struct PhotoRecord {
   int thumbWidth = 0;
   int thumbHeight = 0;
   int64_t thumbMtime = 0;
+  std::string thumbMicroPath;
   std::string editSettings = "{}";
 };
 
@@ -77,12 +78,14 @@ class PhotoRepository {
   std::optional<PhotoRecord> findById(int64_t id);
   std::optional<int64_t> findByHash(const std::string& hash);
   std::string getThumbPath(int64_t photoId);
+  std::string getThumbMicroPath(int64_t photoId);
 
   std::vector<int64_t> queryByFolder(int64_t folderId, bool pickedOnly = false);
   std::vector<int64_t> queryAll(bool pickedOnly = false);
 
   void updatePicked(int64_t id, int picked);
   void updateThumb(int64_t id, const std::string& path, int w, int h, int64_t mtime);
+  void updateThumbMicro(int64_t id, const std::string& path);
   void updateEditSettings(int64_t id, const std::string& json);
 
   // ── App settings ─────────────────────────────────────────────────────────

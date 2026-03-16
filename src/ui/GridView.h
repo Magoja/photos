@@ -14,7 +14,10 @@ class GridView {
  public:
   using SelectCb = std::function<void(int64_t photoId)>;
   using PickCb = std::function<void(int64_t photoId, int picked)>;
-  using ThumbMissCb = std::function<void(int64_t photoId, std::string thumbPath)>;
+  using ThumbMissCb =
+    std::function<void(int64_t photoId, std::string thumbPath, std::string microPath)>;
+
+  static constexpr int64_t kMicroOffset = 1'000'000'000LL;
 
   GridView(catalog::PhotoRepository& repo, TextureManager& texMgr);
 

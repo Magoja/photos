@@ -170,66 +170,84 @@ int main(int /*argc*/, char** /*argv*/) {
   std::queue<ThumbResult> thumbResQ;
   util::ThreadPool thumbPool(2);
 
-  grid.setThumbMissCallback([&](int64_t pid, std::string path) {
-    thumbPool.submit(
-      [pid, path = std::move(path), &thumbMtx, &thumbResQ, &repo, &thumbCache, &db]() {
-        // Fast path: cached file exists on disk
-        if (!path.empty()) {
-          std::ifstream f(path, std::ios::binary);
-          if (f) {
-            std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)), {});
-            if (!bytes.empty()) {
-              std::vector<uint8_t> rgba;
-              int w = 0, h = 0;
-              if (!ui::TextureManager::decodeJpeg(bytes, rgba, w, h)) {
-                return;
-              }
+  grid.setThumbMissCallback([&](int64_t pid, std::string path, std::string microPath) {
+    thumbPool.submit([pid, path = std::move(path), microPath = std::move(microPath), &thumbMtx,
+                      &thumbResQ, &repo, &thumbCache, &db]() {
+      // Micro load (fast path — tiny file, nearly always cache-hit after first import)
+      if (!microPath.empty()) {
+        std::ifstream fm(microPath, std::ios::binary);
+        if (fm) {
+          std::vector<uint8_t> mb((std::istreambuf_iterator<char>(fm)), {});
+          if (!mb.empty()) {
+            std::vector<uint8_t> rgba;
+            int w = 0, h = 0;
+            if (ui::TextureManager::decodeJpeg(mb, rgba, w, h)) {
               std::lock_guard lk(thumbMtx);
-              thumbResQ.push({pid, std::move(rgba), w, h});
-              return;
+              thumbResQ.push({pid + ui::GridView::kMicroOffset, std::move(rgba), w, h});
             }
           }
         }
-        // Slow path: cache file missing — decode source and regenerate
-        auto rec = [&]() -> std::optional<catalog::PhotoRecord> {
-          std::lock_guard lk(db.mutex());
-          return repo.findById(pid);
-        }();
-        if (!rec) {
-          return;
-        }
+      }
 
-        std::string srcPath = repo.fullPathFor(rec->folderId, rec->filename);
-        auto dec = import_ns::RawDecoder::decode(srcPath);
-        if (!dec.ok || dec.thumbJpeg.empty()) {
-          return;
-        }
-
-        {
-          std::lock_guard lk(db.mutex());
-          thumbCache.generate(pid, rec->fileHash, dec.thumbJpeg, repo);
-        }
-
-        // Now serve the freshly written file
-        std::string newPath = repo.getThumbPath(pid);
-        if (newPath.empty()) {
-          return;
-        }
-        std::ifstream f2(newPath, std::ios::binary);
-        if (!f2) {
-          return;
-        }
-        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f2)), {});
-        if (!bytes.empty()) {
-          std::vector<uint8_t> rgba;
-          int w = 0, h = 0;
-          if (!ui::TextureManager::decodeJpeg(bytes, rgba, w, h)) {
+      // Standard load: fast path if file already cached on disk
+      if (!path.empty()) {
+        std::ifstream f(path, std::ios::binary);
+        if (f) {
+          std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)), {});
+          if (!bytes.empty()) {
+            std::vector<uint8_t> rgba;
+            int w = 0, h = 0;
+            if (!ui::TextureManager::decodeJpeg(bytes, rgba, w, h)) {
+              return;
+            }
+            std::lock_guard lk(thumbMtx);
+            thumbResQ.push({pid, std::move(rgba), w, h});
             return;
           }
-          std::lock_guard lk(thumbMtx);
-          thumbResQ.push({pid, std::move(rgba), w, h});
         }
-      });
+      }
+
+      // Slow path: cache file missing — decode source and regenerate
+      auto rec = [&]() -> std::optional<catalog::PhotoRecord> {
+        std::lock_guard lk(db.mutex());
+        return repo.findById(pid);
+      }();
+      if (!rec) {
+        return;
+      }
+
+      std::string srcPath = repo.fullPathFor(rec->folderId, rec->filename);
+      auto dec = import_ns::RawDecoder::decode(srcPath);
+      if (!dec.ok || dec.thumbJpeg.empty()) {
+        return;
+      }
+
+      {
+        std::lock_guard lk(db.mutex());
+        thumbCache.generate(pid, rec->fileHash, dec.thumbJpeg, repo);
+        thumbCache.generateMicro(pid, rec->fileHash, dec.thumbJpeg, repo);
+      }
+
+      // Now serve the freshly written standard file
+      std::string newPath = repo.getThumbPath(pid);
+      if (newPath.empty()) {
+        return;
+      }
+      std::ifstream f2(newPath, std::ios::binary);
+      if (!f2) {
+        return;
+      }
+      std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f2)), {});
+      if (!bytes.empty()) {
+        std::vector<uint8_t> rgba;
+        int w = 0, h = 0;
+        if (!ui::TextureManager::decodeJpeg(bytes, rgba, w, h)) {
+          return;
+        }
+        std::lock_guard lk(thumbMtx);
+        thumbResQ.push({pid, std::move(rgba), w, h});
+      }
+    });
   });
 
   // Initial load
@@ -320,18 +338,36 @@ int main(int /*argc*/, char** /*argv*/) {
         texMgr.evict(evictId);
       }
 
-      // ── Handle F key to open fullscreen ──────────────────────────────
-      if (ImGui::IsKeyPressed(ImGuiKey_F) && !ImGui::GetIO().WantTextInput &&
-          grid.selectedId() > 0 && !fullscreen.isOpen()) {
-        std::vector<int64_t> ids = repo.queryAll(false);
-        fullscreen.setPhotoList(ids, grid.selectedId());
-        fullscreen.open(grid.selectedId());
-      }
-
-      // ── Handle D key to open edit mode from grid ──────────────────────────────
-      if (ImGui::IsKeyPressed(ImGuiKey_D) && !ImGui::GetIO().WantTextInput &&
-          grid.selectedId() > 0 && !editView.isOpen() && !fullscreen.isOpen()) {
-        editView.open(grid.selectedId());
+      // ── Global hotkeys: F = fullscreen, D = adjust, R = crop ────────
+      // Each key closes the other UIs and opens its own, from any state.
+      const bool noTextInput = !ImGui::GetIO().WantTextInput;
+      const int64_t selId    = grid.selectedId();
+      if (noTextInput && selId > 0) {
+        if (ImGui::IsKeyPressed(ImGuiKey_F) && !fullscreen.isOpen()) {
+          editView.close();
+          std::vector<int64_t> ids = repo.queryAll(false);
+          fullscreen.setPhotoList(ids, selId);
+          fullscreen.open(selId);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_D)) {
+          const int64_t target = fullscreen.isOpen() ? fullscreen.currentId() : selId;
+          fullscreen.close();
+          if (editView.isOpen()) {
+            editView.setMode(ui::EditMode::Adjust);
+          } else {
+            editView.open(target);
+          }
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_R)) {
+          const int64_t target = fullscreen.isOpen() ? fullscreen.currentId() : selId;
+          fullscreen.close();
+          if (editView.isOpen()) {
+            editView.setMode(ui::EditMode::Crop);
+          } else {
+            editView.open(target);
+            editView.setMode(ui::EditMode::Crop);
+          }
+        }
       }
 
       // ── Menu bar ─────────────────────────────────────────────────────

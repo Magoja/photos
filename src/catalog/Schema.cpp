@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS photos (
     thumb_width     INTEGER,
     thumb_height    INTEGER,
     thumb_mtime     INTEGER,
+    thumb_micro_path TEXT,
     edit_settings   TEXT    NOT NULL DEFAULT '{}',
     UNIQUE(folder_id, filename)
 );
@@ -113,6 +114,16 @@ INSERT OR IGNORE INTO export_presets (name, quality, max_width, max_height)
 
 // ── Migration helpers ─────────────────────────────────────────────────────────
 
+static void applyV3(Database& db) {
+  try {
+    db.exec("ALTER TABLE photos ADD COLUMN thumb_micro_path TEXT");
+  } catch (...) {
+    // Column may already exist on a partially-migrated DB — safe to ignore.
+  }
+  db.exec("INSERT OR IGNORE INTO schema_version(version) VALUES (3)");
+  spdlog::info("Schema v3 applied: added thumb_micro_path");
+}
+
 static void applyV1(Database& db) {
   db.exec(kSeedPresets);
   db.exec("INSERT OR IGNORE INTO schema_version(version) VALUES (1)");
@@ -142,8 +153,11 @@ void Schema::apply(Database& db, const std::string& libraryRoot) {
   if (ver < 2 && !libraryRoot.empty()) {
     migrateToRelativePaths(db, libraryRoot);
   }
+  if (ver < 3) {
+    applyV3(db);
+  }
 
-  spdlog::debug("Schema version: {}", ver < 1 ? 1 : (int)ver);
+  spdlog::debug("Schema version: {}", ver < 3 ? 3 : (int)ver);
 }
 
 }  // namespace catalog

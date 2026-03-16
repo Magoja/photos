@@ -154,6 +154,7 @@ void Importer::run() {
 
       if (!dec.thumbJpeg.empty() && pid > 0) {
         cache.generate(pid, hash, dec.thumbJpeg, repo);
+        cache.generateMicro(pid, hash, dec.thumbJpeg, repo);
       }
 
       ++stats_.imported;

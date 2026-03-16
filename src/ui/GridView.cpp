@@ -72,15 +72,23 @@ void GridView::render() {
       }
 
       int64_t pid = photoIds_[idx];
-      void* tex = texMgr_.get(pid);
+      const auto* stdTex   = texMgr_.get(pid);
+      const auto* microTex = texMgr_.get(pid + kMicroOffset);
+      const bool stdLoaded   = (stdTex   != texMgr_.placeholder());
+      const bool microLoaded = (microTex != texMgr_.placeholder());
 
-      if (tex == texMgr_.placeholder() && thumbMissCb_ && !requested_.count(pid)) {
+      if (!stdLoaded && thumbMissCb_ && !requested_.count(pid)) {
         requested_.insert(pid);
-        thumbMissCb_(pid, repo_.getThumbPath(pid));
+        thumbMissCb_(pid, repo_.getThumbPath(pid), repo_.getThumbMicroPath(pid));
       }
 
       bool sel = (pid == selectedId_);
-      auto [tw, th] = texMgr_.getSize(pid);
+      const auto* displayTex = stdLoaded   ? stdTex
+                             : microLoaded ? microTex
+                             : texMgr_.placeholder();
+      const auto [tw, th] = stdLoaded   ? texMgr_.getSize(pid)
+                          : microLoaded ? texMgr_.getSize(pid + kMicroOffset)
+                          : std::pair{1, 1};
       auto [imgW, imgH] = computeLetterboxSize(tw, th, thumbW, thumbH);
 
       if (col > 0) {
@@ -100,7 +108,7 @@ void GridView::render() {
       float offY = (thumbH - imgH) * 0.5f + kThumbPad;
       ImVec2 imgMin = {cellPos.x + offX, cellPos.y + offY};
       ImVec2 imgMax = {imgMin.x + imgW, imgMin.y + imgH};
-      dl->AddImage(reinterpret_cast<ImTextureID>(tex), imgMin, imgMax);
+      dl->AddImage(reinterpret_cast<ImTextureID>(displayTex), imgMin, imgMax);
 
       if (sel) {
         dl->AddRect(cellPos, {cellPos.x + cellW, cellPos.y + cellH}, IM_COL32(255, 200, 50, 255),
