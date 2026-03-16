@@ -28,11 +28,13 @@ ctest --preset debug --output-on-failure  # run tests
 ## Key architectural rules
 - DB writes: background/import thread only, guarded by std::mutex on Database instance
 - Thumbnail upload: background ThreadPool decodes JPEG → posts ThumbnailResult to main-thread queue → main thread uploads MTLTexture
+- Thumbnail pyramid: two tiers — micro (64px, `thumbs_micro/{xx}/{hash}.jpg`) loads first as blurry placeholder; standard (256px, `thumbs/{xx}/{hash}.jpg`) replaces it. Micro textures use `photoId + kMicroOffset` (1 000 000 000) as composite LRU key.
 - Virtual scroll: preload photo IDs into std::vector<int64_t> for current folder; render only rows in viewport using SetCursorPosY skip
 - Dedup: XXH3-64 fast-fingerprint (first+last 64 KB + size) in memory per session; full XXH3-128 only on fingerprint collision; full hash stored in DB
 - edit_settings: TEXT column, JSON blob via nlohmann/json — extensibility hook for future non-destructive edits
 - Metal textures: MTLStorageModeShared on Apple Silicon (unified memory, no blit needed)
 - LRU texture cache: 2000 slot cap; placeholder gray texture returned while async load is in flight
+- EditView::render() is a 5-line composition: `handleKeyCapture` → `renderPreviewArea` → `renderControlPanel` (→ `renderModeTabs`, `renderSaveButtons`) → `pollSaveCompletion`
 
 ## Code style
 - **Single responsibility**: every function does exactly one thing.
@@ -116,3 +118,11 @@ ctest --preset debug --output-on-failure  # run tests
 - [x] **Task 13 — Weekly catalog backup**
   Files: `src/catalog/BackupManager.h/.cpp`
   ✓ Verify: Set `app_settings.last_backup_time` = 8 days ago → launch app → `.db` backup appears in `~/Library/Application Support/PhotoLibrary/backups/` within 30 s. With 6 artificial backup rows, cleanup leaves exactly 5 files and 5 `backup_log` rows.
+
+- [x] **Task 14 — Multi-level thumbnail pyramid (micro + standard)**
+  Files: `src/catalog/ThumbnailCache.h/.cpp`, `Schema.h/.cpp`, `PhotoRepository.h/.cpp`, `src/ui/GridView.h/.cpp`, `src/import/Importer.cpp`, `src/main.mm`
+  ✓ Verify: Import 50 RAW photos → `thumbs_micro/` contains 64px JPEGs (~1–3 KB each). Restart app → grid populates with blurry micro-thumbnails within 1–2 frames, then standard 256px thumbnails replace them. `SELECT thumb_micro_path FROM photos LIMIT 5` all non-empty. Schema v3 migration adds `thumb_micro_path TEXT` column.
+
+- [x] **Task 15 — Decompose EditView::render()**
+  Files: `src/ui/EditView.h/.mm`
+  ✓ Verify: `render()` is a 5-line composition delegating to `handleKeyCapture`, `renderPreviewArea`, `renderControlPanel`, `renderModeTabs`, `renderSaveButtons`, `pollSaveCompletion`. Build clean, behaviour unchanged.
