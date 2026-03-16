@@ -46,6 +46,7 @@ class EditView {
 
   void open(int64_t photoId);
   void close();
+  void setMode(EditMode mode);
   bool isOpen() const { return open_; }
 
   void render();

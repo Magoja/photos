@@ -129,6 +129,13 @@ void EditView::close() {
   open_ = false;
 }
 
+void EditView::setMode(EditMode mode) {
+  if (mode_ == mode) { return; }
+  mode_          = mode;
+  tabSyncNeeded_ = true;
+  previewDirty_  = true;
+}
+
 // ── Source pixel loading ──────────────────────────────────────────────────────
 
 bool EditView::loadSourcePixels(int64_t photoId) {
@@ -766,19 +773,19 @@ void EditView::render() {
   justOpened_ = false;
   if (!io.WantTextInput && !skipKeys) {
     if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-      settings_ = saved_;
+      if (mode_ == EditMode::Crop) {
+        setMode(EditMode::Adjust);
+      } else {
+        settings_ = saved_;
+        ImGui::End();
+        close();
+        return;
+      }
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F)) {
       ImGui::End();
       close();
       return;
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_D)) {
-      ImGui::End();
-      close();
-      return;
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_R)) {
-      mode_ = (mode_ == EditMode::Adjust) ? EditMode::Crop : EditMode::Adjust;
-      tabSyncNeeded_ = true;
     }
   }
   ImGui::End();

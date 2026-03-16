@@ -56,12 +56,6 @@ void FullscreenView::handleNavKeys() {
     togglePickCurrentPhoto(currentId_);
   }
 
-  const ImGuiIO& io = ImGui::GetIO();
-  if (ImGui::IsKeyPressed(ImGuiKey_D) && currentId_ > 0 && !io.WantTextInput) {
-    if (openEditCb_) {
-      openEditCb_(currentId_);
-    }
-  }
 }
 
 void FullscreenView::togglePickCurrentPhoto(const int64_t photoId) {
