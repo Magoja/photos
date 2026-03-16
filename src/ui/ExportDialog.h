@@ -1,7 +1,7 @@
 #pragma once
 #include "export/Exporter.h"
-#include "catalog/Database.h"
 #include "catalog/PhotoRepository.h"
+#include "util/Platform.h"
 #include <vector>
 #include <cstdint>
 #include <memory>
@@ -11,9 +11,10 @@ namespace ui {
 
 class ExportDialog {
  public:
-  ExportDialog(catalog::PhotoRepository& repo);
+  explicit ExportDialog(catalog::PhotoRepository& repo);
 
-  void open(const std::vector<int64_t>& selectedIds);
+  // Open dialog for multi-photo export (primaryId sets the anchor; ids = all selected)
+  void open(int64_t primaryId, std::vector<int64_t> ids);
   void close();
   bool isOpen() const { return open_; }
 
@@ -25,9 +26,8 @@ class ExportDialog {
   bool exporting_ = false;
   bool finished_ = false;
 
+  int64_t primaryId_ = 0;
   std::vector<int64_t> selectedIds_;
-  std::vector<export_ns::ExportPreset> presets_;
-  int selectedPreset_ = 0;
   std::string targetPath_;
   int doneCount_ = 0;
   int totalCount_ = 0;
@@ -36,7 +36,7 @@ class ExportDialog {
 
   std::unique_ptr<export_ns::Exporter> exporter_;
 
-  void loadPresets();
+  void startExport();
 };
 
 }  // namespace ui

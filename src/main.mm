@@ -380,8 +380,10 @@ int main(int /*argc*/, char** /*argv*/) {
           if (ImGui::MenuItem("Import...")) {
             importDlg.open("", libraryRoot, thumbDir);
           }
-          if (ImGui::MenuItem("Export Selected", nullptr, false, grid.selectedId() > 0)) {
-            exportDlg.open({grid.selectedId()});
+          if (ImGui::MenuItem("Export Selected", nullptr, false, grid.primaryId() > 0)) {
+            std::vector<int64_t> allSel(grid.selectedIds().begin(), grid.selectedIds().end());
+            allSel.push_back(grid.primaryId());
+            exportDlg.open(grid.primaryId(), std::move(allSel));
           }
           ImGui::Separator();
           if (ImGui::MenuItem("Settings...")) {
@@ -471,7 +473,9 @@ int main(int /*argc*/, char** /*argv*/) {
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.3f, 1.f));
         if (ImGui::Button("Export")) {
-          // wired in Task 18
+          std::vector<int64_t> allSel(grid.selectedIds().begin(), grid.selectedIds().end());
+          allSel.push_back(grid.primaryId());
+          exportDlg.open(grid.primaryId(), std::move(allSel));
         }
         ImGui::PopStyleColor();
       }

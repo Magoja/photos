@@ -86,7 +86,7 @@ ctest --preset debug --output-on-failure  # run tests
 
   ✓ Verify: Cmd+click 5 photos → 5 blue borders + "5 selected" label. Shift+click selects contiguous range. Plain click clears multi-selection and selects single. "Sync Metadata" and "Export" buttons appear in toolbar when ≥2 selected.
 
-- [ ] **Task 17 — Metadata Sync Dialog**
+- [x] **Task 17 — Metadata Sync Dialog**
   Files: `src/ui/MetaSyncDialog.h/.cpp`, `src/catalog/PhotoRepository.h/.cpp`, `src/main.mm`
 
   *PhotoRepository additions:*
