@@ -4,6 +4,9 @@
 Say "Continue the project" to pick up the next unchecked task below.
 Claude will: read this file → implement the next `- [ ]` task → run verification → **create a git commit** → check it off `- [x]` → stop.
 
+## Bug / crash fixes
+When fixing a crash or bug: implement the fix, build, and explain the change — but **do NOT commit** until the user confirms the fix works.
+
 ## Stack
 - C++20 + Obj-C++ (.mm) for macOS APIs (Metal, DiskArbitration, NSOpenPanel)
 - Dear ImGui (git submodule `third_party/imgui`, docking branch) + SDL2 + Metal backend

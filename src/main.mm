@@ -99,6 +99,9 @@ struct RenderCtx {
   ui::SettingsPanel& settingsPanel;
   std::mutex& thumbMtx;
   std::queue<ThumbResult>& thumbResQ;
+  // Deferred clear-cache: set by Settings button, executed at the start of the
+  // next frame before any draw calls to avoid freeing textures mid-frame.
+  bool clearCachePending = false;
 };
 
 static bool loadAndDecodeJpeg(const std::string& path,
@@ -227,21 +230,12 @@ static void wireUiCallbacks(RenderCtx& ctx) {
 
   ctx.metaSyncDlg.setDoneCallback([&]() { ctx.grid.reload(); });
 
+  // NOTE: set a deferred flag rather than calling evictAll() immediately.
+  // The Settings panel renders after the grid has already added texture pointers
+  // to the ImGui draw list — calling evictAll() mid-frame would free those
+  // textures before ImGui_ImplMetal_RenderDrawData processes them (crash).
   ctx.settingsPanel.setClearCacheCallback([&]() {
-    ctx.texMgr.evictAll();
-    {
-      std::lock_guard lk(ctx.db.mutex());
-      ctx.repo.clearAllThumbs();
-    }
-    const std::string cacheBase = util::cacheDir();
-    for (const auto& dir : {ctx.thumbDir,
-                             cacheBase + "/thumbs_micro",
-                             cacheBase + "/thumbs_edit"}) {
-      std::error_code ec;
-      fs::remove_all(dir, ec);
-      fs::create_directories(dir, ec);
-    }
-    ctx.grid.reload();
+    ctx.clearCachePending = true;
   });
 }
 
@@ -256,6 +250,25 @@ static void drainThumbQueue(RenderCtx& ctx) {
     ctx.texMgr.uploadRgba(r.pid, r.rgba, r.width, r.height);
     local.pop();
   }
+}
+
+static void drainClearCache(RenderCtx& ctx) {
+  if (!ctx.clearCachePending) { return; }
+  ctx.clearCachePending = false;
+  ctx.texMgr.evictAll();
+  {
+    std::lock_guard lk(ctx.db.mutex());
+    ctx.repo.clearAllThumbs();
+  }
+  const std::string cacheBase = util::cacheDir();
+  for (const auto& dir : {ctx.thumbDir,
+                           cacheBase + "/thumbs_micro",
+                           cacheBase + "/thumbs_edit"}) {
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+  }
+  ctx.grid.reload();
 }
 
 static void drainTextureEvictions(RenderCtx& ctx) {
@@ -612,6 +625,7 @@ int main(int /*argc*/, char** /*argv*/) {
       ImGui_ImplSDL2_NewFrame();
       ImGui::NewFrame();
 
+      drainClearCache(ctx);
       drainThumbQueue(ctx);
       drainTextureEvictions(ctx);
       processGlobalHotkeys(ctx);
