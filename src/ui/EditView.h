@@ -87,6 +87,10 @@ class EditView {
   std::thread       loadThread_;
   std::vector<uint8_t> pendingRgb_;            // written by loadThread_, swapped on main
   int               pendingW_ = 0, pendingH_ = 0;
+  // Retained strong ref to the grid thumbnail used as fallback while LibRaw decodes.
+  // Prevents the LRU from freeing the MTLTexture between draw-list population and
+  // ImGui_ImplMetal_RenderDrawData (which would cause a dangling-pointer crash).
+  MTLTexturePtr     fallbackTex_ = nullptr;
 
   std::atomic<bool> saveDone_{false};
   bool              saving_    = false;

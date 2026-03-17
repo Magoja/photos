@@ -121,6 +121,8 @@ EditView::~EditView() {
   fullDecodeCancel_ = true;
   if (loadThread_.joinable()) { loadThread_.join(); }
   releasePreviewTex();
+  [fallbackTex_ release];
+  fallbackTex_ = nullptr;
   if (saveThread_.joinable()) { saveThread_.join(); }
 }
 
@@ -142,10 +144,13 @@ void EditView::open(int64_t photoId) {
   dragHandle_ = -1;
   aspectMode_ = 0;
 
-  // Clear source pixels so drawPreview falls back to texMgr_ grid thumbnail
+  // Clear source pixels so drawPreview falls back to texMgr_ grid thumbnail.
+  // Also release any retained fallback texture from the previous photo.
   originalRgb_.clear();
   srcW_ = 0;
   srcH_ = 0;
+  [fallbackTex_ release];
+  fallbackTex_ = nullptr;
 
   // Load existing edit settings from DB
   const auto rec = repo_.findById(photoId);
@@ -643,12 +648,28 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
     rebuildPreviewTexture();
     previewDirty_ = false;
   }
-  // While LibRaw is decoding, fall back to the cached grid thumbnail as a
-  // zero-cost visual placeholder (already in VRAM from grid rendering).
-  const auto* displayTex = previewTex_
-      ? previewTex_
-      : texMgr_.get(photoId_);
-  if (!displayTex || displayTex == texMgr_.placeholder()) { return; }
+
+  MTLTexturePtr displayTex = nullptr;
+  if (previewTex_) {
+    // Accurate LibRaw preview is ready — release any retained fallback.
+    if (fallbackTex_) {
+      [fallbackTex_ release];
+      fallbackTex_ = nullptr;
+    }
+    displayTex = previewTex_;
+  } else {
+    // LibRaw decode in progress — use cached grid thumbnail as placeholder.
+    // Retain a strong reference so the LRU cannot free the MTLTexture between
+    // draw-list population and ImGui_ImplMetal_RenderDrawData (dangling-ptr fix).
+    MTLTexturePtr gridTex = texMgr_.get(photoId_);
+    if (!gridTex || gridTex == texMgr_.placeholder()) { return; }
+    if (fallbackTex_ != gridTex) {
+      [fallbackTex_ release];
+      fallbackTex_ = [gridTex retain];
+    }
+    displayTex = fallbackTex_;
+  }
+  if (!displayTex) { return; }
 
   const float areaW = (areaMax.x - areaMin.x) * 0.9f;
   const float areaH = (areaMax.y - areaMin.y) * 0.9f;
