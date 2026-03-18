@@ -140,6 +140,58 @@ TEST_CASE("applyAdjustments: positive temperature warms (more red, less blue)") 
   REQUIRE(out[2] == 70);
 }
 
+// ── downsampleRgb ─────────────────────────────────────────────────────────────
+
+TEST_CASE("downsampleRgb: scale=1 is identity") {
+  const std::vector<uint8_t> src = {10, 20, 30,  40, 50, 60};
+  int outW = 0, outH = 0;
+  const auto out = util::downsampleRgb(src.data(), 2, 1, 1, outW, outH);
+  REQUIRE(outW == 2); REQUIRE(outH == 1);
+  REQUIRE(out == src);
+}
+
+TEST_CASE("downsampleRgb: scale=2 averages 2x2 block") {
+  // R: 100+200+50+150=500/4=125; G: 0+0+0+0=0; B: 200+200+200+200=200
+  const std::vector<uint8_t> src = {
+    100, 0, 200,   200, 0, 200,
+     50, 0, 200,   150, 0, 200,
+  };
+  int outW = 0, outH = 0;
+  const auto out = util::downsampleRgb(src.data(), 2, 2, 2, outW, outH);
+  REQUIRE(outW == 1); REQUIRE(outH == 1);
+  REQUIRE(out[0] == 125); REQUIRE(out[1] == 0); REQUIRE(out[2] == 200);
+}
+
+TEST_CASE("downsampleRgb: scale=2 preserves uniform color exactly") {
+  const std::vector<uint8_t> src(4 * 4 * 3, 128);  // 4×4 mid-gray
+  int outW = 0, outH = 0;
+  const auto out = util::downsampleRgb(src.data(), 4, 4, 2, outW, outH);
+  REQUIRE(outW == 2); REQUIRE(outH == 2);
+  REQUIRE(std::all_of(out.begin(), out.end(), [](uint8_t v){ return v == 128; }));
+}
+
+// ── rgbToRgba ─────────────────────────────────────────────────────────────────
+
+TEST_CASE("rgbToRgba: alpha channel is always 255") {
+  const std::vector<uint8_t> rgb = {10, 20, 30,  40, 50, 60};
+  const auto rgba = util::rgbToRgba(rgb, 2);
+  REQUIRE(rgba.size() == 8u);
+  REQUIRE(rgba[3] == 255);  // first pixel alpha
+  REQUIRE(rgba[7] == 255);  // second pixel alpha
+}
+
+TEST_CASE("rgbToRgba: RGB channels are copied verbatim") {
+  const std::vector<uint8_t> rgb = {1, 2, 3,  4, 5, 6};
+  const auto rgba = util::rgbToRgba(rgb, 2);
+  REQUIRE(rgba[0] == 1); REQUIRE(rgba[1] == 2); REQUIRE(rgba[2] == 3);
+  REQUIRE(rgba[4] == 4); REQUIRE(rgba[5] == 5); REQUIRE(rgba[6] == 6);
+}
+
+TEST_CASE("rgbToRgba: zero pixels → empty output") {
+  const std::vector<uint8_t> rgb;
+  REQUIRE(util::rgbToRgba(rgb, 0).empty());
+}
+
 // ── Pipeline order (exposure before contrast) ─────────────────────────────────
 
 TEST_CASE("applyAdjustments: exposure then contrast applied in order") {
