@@ -93,6 +93,7 @@ set(EXPORT_SOURCES
 set(UTIL_SOURCES
     src/util/Platform.mm
     src/util/ThreadPool.cpp
+    src/util/PixelPipeline.cpp
 )
 
 set(APP_ICON "${CMAKE_SOURCE_DIR}/assets/JakeutilPhotos.icns")

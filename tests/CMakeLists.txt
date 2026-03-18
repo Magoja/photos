@@ -73,3 +73,11 @@ add_executable(test_thumb_crop
 )
 target_link_libraries(test_thumb_crop PRIVATE Catch2::Catch2WithMain)
 add_test(NAME test_thumb_crop COMMAND test_thumb_crop)
+
+# ── test_pixel_pipeline ───────────────────────────────────────────────────────
+add_executable(test_pixel_pipeline
+    test_pixel_pipeline.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/PixelPipeline.cpp
+)
+target_link_libraries(test_pixel_pipeline PRIVATE Catch2::Catch2WithMain)
+add_test(NAME test_pixel_pipeline COMMAND test_pixel_pipeline)

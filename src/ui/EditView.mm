@@ -2,6 +2,7 @@
 #import <Metal/Metal.h>
 
 #include "EditView.h"
+#include "util/PixelPipeline.h"
 #include "import/RawDecoder.h"
 #include "util/Platform.h"
 
@@ -245,44 +246,11 @@ void EditView::pollLibRawLoad() {
 
 // ── Pixel editing pipeline ────────────────────────────────────────────────────
 
+// Delegated to util::applyAdjustments (shared with Exporter pipeline).
 std::vector<uint8_t> EditView::applyEditsToPixels(
     const std::vector<uint8_t>& src, int w, int h,
     const catalog::EditSettings& s) const {
-
-  const float eMul  = std::pow(2.f, s.exposure);
-  const float t     = s.temperature / 100.f;
-  const float rMul  = 1.f + t * 0.30f;
-  const float gMul  = 1.f + t * 0.05f;
-  const float bMul  = 1.f - t * 0.30f;
-  const float cFact = 1.f + s.contrast   / 100.f;
-  const float sFact = 1.f + s.saturation / 100.f;
-
-  std::vector<uint8_t> dst(src.size());
-  const int n = w * h;
-  for (int i = 0; i < n; ++i) {
-    float r = src[i*3+0];
-    float g = src[i*3+1];
-    float b = src[i*3+2];
-
-    // Exposure
-    r *= eMul; g *= eMul; b *= eMul;
-    // Color temperature
-    r *= rMul; g *= gMul; b *= bMul;
-    // Contrast (pivot = 128)
-    r = 128.f + (r - 128.f) * cFact;
-    g = 128.f + (g - 128.f) * cFact;
-    b = 128.f + (b - 128.f) * cFact;
-    // Saturation (BT.601 luma)
-    const float L = 0.299f*r + 0.587f*g + 0.114f*b;
-    r = L + (r - L) * sFact;
-    g = L + (g - L) * sFact;
-    b = L + (b - L) * sFact;
-
-    dst[i*3+0] = (uint8_t)std::clamp(r, 0.f, 255.f);
-    dst[i*3+1] = (uint8_t)std::clamp(g, 0.f, 255.f);
-    dst[i*3+2] = (uint8_t)std::clamp(b, 0.f, 255.f);
-  }
-  return dst;
+  return util::applyAdjustments(src, w, h, s);
 }
 
 // ── Crop/rotate helpers ───────────────────────────────────────────────────────
