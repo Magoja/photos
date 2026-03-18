@@ -1,6 +1,9 @@
 #include "FullscreenView.h"
 #include "ThumbCropUV.h"
 #include "catalog/EditSettings.h"
+#include "util/PixelPipeline.h"
+#include <libraw/libraw.h>
+#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <ranges>
 
@@ -8,6 +11,92 @@ namespace ui {
 
 FullscreenView::FullscreenView(catalog::PhotoRepository& repo, TextureManager& texMgr)
   : repo_(repo), texMgr_(texMgr) {}
+
+FullscreenView::~FullscreenView() {
+  cancelDecode();
+}
+
+// ── Background decode ─────────────────────────────────────────────────────────
+
+void FullscreenView::cancelDecode() {
+  decodeCancel_ = true;
+  if (decodeThread_.joinable()) {
+    decodeThread_.join();
+  }
+  decodeCancel_ = false;
+  decodeReady_  = false;
+  decoding_     = false;
+  pendingRgba_.clear();
+}
+
+void FullscreenView::startDecodeForCurrent() {
+  // Pre-cropped thumbnails already contain correct tone from the save pipeline —
+  // no decode needed; crop UV is also already applied (full {0,0,1,1}).
+  const auto rec = repo_.findById(currentId_);
+  if (!rec) { return; }
+  if (rec->thumbPath.find("thumbs_edit") != std::string::npos) { return; }
+
+  const std::string srcPath = repo_.fullPathFor(rec->folderId, rec->filename);
+  if (srcPath.empty()) { return; }
+
+  const catalog::EditSettings es = catalog::EditSettings::fromJson(rec->editSettings);
+  decodingForId_ = currentId_;
+  decoding_      = true;
+  decodeReady_   = false;
+
+  decodeThread_ = std::thread([this, srcPath, es]() {
+    auto raw = std::make_unique<LibRaw>();
+    raw->imgdata.params.output_bps    = 8;
+    raw->imgdata.params.use_camera_wb = 1;
+    if (raw->open_file(srcPath.c_str()) != LIBRAW_SUCCESS ||
+        raw->unpack()                    != LIBRAW_SUCCESS ||
+        raw->dcraw_process()             != LIBRAW_SUCCESS) {
+      spdlog::warn("FullscreenView: LibRaw decode failed for {}", srcPath);
+      decodeReady_ = true;
+      return;
+    }
+    if (decodeCancel_.load()) { return; }
+
+    libraw_processed_image_t* img = raw->dcraw_make_mem_image();
+    if (!img || img->type != LIBRAW_IMAGE_BITMAP || img->colors != 3) {
+      if (img) { LibRaw::dcraw_clear_mem(img); }
+      decodeReady_ = true;
+      return;
+    }
+
+    constexpr int kMaxEdge = 2000;
+    const int scale = std::max(1, std::max(img->width, img->height) / kMaxEdge);
+    int dsW = 0, dsH = 0;
+    auto rgb = util::downsampleRgb(img->data, img->width, img->height, scale, dsW, dsH);
+    LibRaw::dcraw_clear_mem(img);
+
+    if (decodeCancel_.load()) { return; }
+
+    // Compensate for ~1 EV brightness gap between LibRaw neutral output and
+    // the camera-embedded JPEG (which has the camera ISP tone curve applied).
+    const auto boosted = util::applyRawBoost(rgb, dsW * dsH);
+    const auto adjusted = util::applyAdjustments(boosted, dsW, dsH, es);
+    pendingRgba_ = util::rgbToRgba(adjusted, dsW * dsH);
+    pendingW_ = dsW;
+    pendingH_ = dsH;
+
+    if (!decodeCancel_.load()) {
+      decodeReady_ = true;
+    }
+  });
+}
+
+void FullscreenView::pollDecodeResult() {
+  if (!decoding_ || !decodeReady_.load()) { return; }
+  decodeThread_.join();
+  decoding_    = false;
+  decodeReady_ = false;
+
+  if (!pendingRgba_.empty()) {
+    texMgr_.uploadRgba(decodingForId_ + kAdjOffset, pendingRgba_, pendingW_, pendingH_);
+    pendingRgba_.clear();
+  }
+}
 
 void FullscreenView::setPhotoList(std::vector<int64_t> ids, int64_t currentId) {
   photoIds_ = std::move(ids);
@@ -17,12 +106,16 @@ void FullscreenView::setPhotoList(std::vector<int64_t> ids, int64_t currentId) {
 }
 
 void FullscreenView::open(int64_t photoId) {
+  cancelDecode();
+  texMgr_.evict(currentId_ + kAdjOffset);
   currentId_ = photoId;
   open_ = true;
   resetView();
+  startDecodeForCurrent();
 }
 
 void FullscreenView::close() {
+  cancelDecode();
   open_ = false;
 }
 
@@ -36,9 +129,12 @@ void FullscreenView::navigate(int delta) {
   if (photoIds_.empty()) {
     return;
   }
+  cancelDecode();
+  texMgr_.evict(currentId_ + kAdjOffset);
   currentIdx_ = std::clamp(currentIdx_ + delta, 0, (int)photoIds_.size() - 1);
   currentId_ = photoIds_[currentIdx_];
   resetView();
+  startDecodeForCurrent();
 }
 
 // ── Input handlers ────────────────────────────────────────────────────────────
@@ -92,7 +188,11 @@ void FullscreenView::drawBackground(ImDrawList* dl, ImVec2 scrSz) const {
 }
 
 void FullscreenView::drawPhoto(ImDrawList* dl, ImVec2 scrSz) const {
-  const auto tex = texMgr_.get(currentId_);
+  // Prefer the tone-adjusted texture (LibRaw decode + applyAdjustments) if available;
+  // otherwise fall back to the cached camera-JPEG thumbnail as a loading placeholder.
+  const auto adjTex = texMgr_.get(currentId_ + kAdjOffset);
+  const bool hasAdj = adjTex && adjTex != texMgr_.placeholder();
+  const auto tex = hasAdj ? adjTex : texMgr_.get(currentId_);
   if (!tex || tex == texMgr_.placeholder()) { return; }
 
   ImVec2 uvMin{0.f, 0.f}, uvMax{1.f, 1.f};
@@ -210,6 +310,8 @@ void FullscreenView::render() {
   handleZoomAndPan(io);
 
   ImGui::End();
+
+  pollDecodeResult();
 
   ImDrawList* const dl = ImGui::GetForegroundDrawList();
   drawBackground(dl, scrSz);

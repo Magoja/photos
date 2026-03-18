@@ -38,43 +38,6 @@ constexpr std::array<AspectRatio, 5> kAspectRatios = {{
   {"3:2"sv,      AspectConstraint::Fixed, 3.f/2.f},
 }};
 
-static std::vector<uint8_t> rgbToRgba(const std::vector<uint8_t>& rgb, int pixelCount) {
-  std::vector<uint8_t> rgba;
-  rgba.reserve(pixelCount * 4);
-  for (int i = 0; i < pixelCount; ++i) {
-    rgba.push_back(rgb[i*3+0]);
-    rgba.push_back(rgb[i*3+1]);
-    rgba.push_back(rgb[i*3+2]);
-    rgba.push_back(255);
-  }
-  return rgba;
-}
-
-// Box-filter downsample of an RGB (3-byte) buffer by an integer scale factor.
-// Averaging is linear so tonal response is preserved identically to full-size.
-static std::vector<uint8_t> downsampleRgb(const uint8_t* src, int srcW, int srcH,
-                                           int scale, int& outW, int& outH) {
-  outW = srcW / scale;
-  outH = srcH / scale;
-  std::vector<uint8_t> dst(static_cast<size_t>(outW * outH) * 3);
-  const int count = scale * scale;
-  for (int y = 0; y < outH; ++y) {
-    for (int x = 0; x < outW; ++x) {
-      int sumR = 0, sumG = 0, sumB = 0;
-      for (int dy = 0; dy < scale; ++dy) {
-        for (int dx = 0; dx < scale; ++dx) {
-          const int idx = ((y * scale + dy) * srcW + (x * scale + dx)) * 3;
-          sumR += src[idx]; sumG += src[idx + 1]; sumB += src[idx + 2];
-        }
-      }
-      const int out = (y * outW + x) * 3;
-      dst[out]     = static_cast<uint8_t>(sumR / count);
-      dst[out + 1] = static_cast<uint8_t>(sumG / count);
-      dst[out + 2] = static_cast<uint8_t>(sumB / count);
-    }
-  }
-  return dst;
-}
 
 static std::array<ImVec2, 8> cropHandlePositions(float cx, float cy, float cw, float ch) {
   return {{
@@ -223,9 +186,13 @@ void EditView::loadLibRawBackground(std::string srcPath) {
   // Box-filter averaging is linear and preserves tonal response.
   constexpr int kMaxEdge = 2000;
   const int scale = std::max(1, std::max(img->width, img->height) / kMaxEdge);
-  pendingRgb_ = downsampleRgb(img->data, img->width, img->height, scale,
-                              pendingW_, pendingH_);
+  const auto dsRgb = util::downsampleRgb(img->data, img->width, img->height, scale,
+                                         pendingW_, pendingH_);
   LibRaw::dcraw_clear_mem(img);
+
+  // Compensate for ~1 EV brightness gap between LibRaw neutral output and
+  // the camera-embedded JPEG (which has the camera ISP tone curve applied).
+  pendingRgb_ = util::applyRawBoost(dsRgb, pendingW_ * pendingH_);
 
   if (!fullDecodeCancel_.load()) {
     fullDecodeReady_ = true;
@@ -355,7 +322,7 @@ void EditView::rebuildPreviewTexture() {
 
   releasePreviewTex();
 
-  const auto rgba = rgbToRgba(*pixels, previewW * previewH);
+  const auto rgba = util::rgbToRgba(*pixels, previewW * previewH);
   previewTex_ = rgbaToTexture((id<MTLDevice>)device_, rgba, previewW, previewH);
 }
 
