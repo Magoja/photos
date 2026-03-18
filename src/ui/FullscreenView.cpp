@@ -72,10 +72,7 @@ void FullscreenView::startDecodeForCurrent() {
 
     if (decodeCancel_.load()) { return; }
 
-    // Compensate for ~1 EV brightness gap between LibRaw neutral output and
-    // the camera-embedded JPEG (which has the camera ISP tone curve applied).
-    const auto boosted = util::applyRawBoost(rgb, dsW * dsH);
-    const auto adjusted = util::applyAdjustments(boosted, dsW, dsH, es);
+    const auto adjusted = util::applyAdjustments(rgb, dsW, dsH, es);
     pendingRgba_ = util::rgbToRgba(adjusted, dsW * dsH);
     pendingW_ = dsW;
     pendingH_ = dsH;

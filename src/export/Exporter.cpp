@@ -358,13 +358,8 @@ bool Exporter::exportOne(const PhotoRecord& rec, const std::string& destDir) {
 
   const int srcW = img->width;
   const int srcH = img->height;
-  const std::vector<uint8_t> rawRgb(img->data, img->data + static_cast<size_t>(srcW * srcH * 3));
+  const std::vector<uint8_t> rgb(img->data, img->data + static_cast<size_t>(srcW * srcH * 3));
   LibRaw::dcraw_clear_mem(img);
-
-  // Compensate for ~1 EV brightness gap between LibRaw neutral output and
-  // the camera-embedded JPEG (camera ISP tone curve). Consistent with
-  // EditView and FullscreenView preview so WYSIWYG holds across all paths.
-  const auto rgb = util::applyRawBoost(rawRgb, srcW * srcH);
 
   // 2. Apply EditSettings
   const EditSettings settings = EditSettings::fromJson(rec.editSettings);

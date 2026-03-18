@@ -5,20 +5,6 @@
 
 namespace util {
 
-// Exposure correction applied after every LibRaw decode to compensate for the
-// ~1 EV brightness difference between LibRaw's neutral output and the
-// camera-embedded JPEG (which has the camera ISP tone curve baked in).
-// Applied in gamma-encoded space: each channel is multiplied by pow(2, kRawBoostEV).
-// Consistent across EditView preview, FullscreenView preview, and Exporter so
-// "what you see is what you export".
-constexpr float kRawBoostEV = 1.0f;
-
-// Apply kRawBoostEV exposure correction to a LibRaw-decoded RGB buffer.
-// Call once after downsampleRgb() and before applyAdjustments() in every
-// LibRaw decode path (EditView, FullscreenView, Exporter) to compensate for
-// the ~1 EV brightness gap between LibRaw and camera-embedded JPEG output.
-std::vector<uint8_t> applyRawBoost(const std::vector<uint8_t>& src, int pixelCount);
-
 // Box-filter downsample of an RGB (3 bytes/pixel) buffer by an integer scale
 // factor.  Averaging is performed in gamma-encoded space (same convention as
 // the rest of the pipeline).  outW/outH receive the result dimensions.

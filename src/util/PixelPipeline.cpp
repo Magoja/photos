@@ -28,17 +28,6 @@ std::vector<uint8_t> downsampleRgb(const uint8_t* src, int srcW, int srcH,
   return dst;
 }
 
-std::vector<uint8_t> applyRawBoost(const std::vector<uint8_t>& src, int pixelCount) {
-  if (pixelCount <= 0) { return {}; }
-  const float mul = std::pow(2.f, kRawBoostEV);
-  std::vector<uint8_t> dst(src.size());
-  const int n = pixelCount * 3;
-  for (int i = 0; i < n; ++i) {
-    dst[i] = static_cast<uint8_t>(std::lround(std::clamp(src[i] * mul, 0.f, 255.f)));
-  }
-  return dst;
-}
-
 std::vector<uint8_t> rgbToRgba(const std::vector<uint8_t>& rgb, int pixelCount) {
   std::vector<uint8_t> rgba;
   rgba.reserve(static_cast<size_t>(pixelCount) * 4);

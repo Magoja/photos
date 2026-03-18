@@ -190,9 +190,7 @@ void EditView::loadLibRawBackground(std::string srcPath) {
                                          pendingW_, pendingH_);
   LibRaw::dcraw_clear_mem(img);
 
-  // Compensate for ~1 EV brightness gap between LibRaw neutral output and
-  // the camera-embedded JPEG (which has the camera ISP tone curve applied).
-  pendingRgb_ = util::applyRawBoost(dsRgb, pendingW_ * pendingH_);
+  pendingRgb_ = dsRgb;
 
   if (!fullDecodeCancel_.load()) {
     fullDecodeReady_ = true;
@@ -586,27 +584,14 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
     previewDirty_ = false;
   }
 
-  MTLTexturePtr displayTex = nullptr;
-  if (previewTex_) {
-    // Accurate LibRaw preview is ready — release any retained fallback.
-    if (fallbackTex_) {
-      [fallbackTex_ release];
-      fallbackTex_ = nullptr;
-    }
-    displayTex = previewTex_;
-  } else {
-    // LibRaw decode in progress — use cached grid thumbnail as placeholder.
-    // Retain a strong reference so the LRU cannot free the MTLTexture between
-    // draw-list population and ImGui_ImplMetal_RenderDrawData (dangling-ptr fix).
-    MTLTexturePtr gridTex = texMgr_.get(photoId_);
-    if (!gridTex || gridTex == texMgr_.placeholder()) { return; }
-    if (fallbackTex_ != gridTex) {
-      [fallbackTex_ release];
-      fallbackTex_ = [gridTex retain];
-    }
-    displayTex = fallbackTex_;
+  if (!previewTex_) {
+    // LibRaw decode still in progress; renderPreviewArea already draws the
+    // dark background + "Loading accurate preview..." overlay.
+    // Release any previously retained fallback.
+    if (fallbackTex_) { [fallbackTex_ release]; fallbackTex_ = nullptr; }
+    return;
   }
-  if (!displayTex) { return; }
+  MTLTexturePtr displayTex = previewTex_;
 
   const float areaW = (areaMax.x - areaMin.x) * 0.9f;
   const float areaH = (areaMax.y - areaMin.y) * 0.9f;

@@ -192,34 +192,6 @@ TEST_CASE("rgbToRgba: zero pixels → empty output") {
   REQUIRE(util::rgbToRgba(rgb, 0).empty());
 }
 
-// ── applyRawBoost ─────────────────────────────────────────────────────────────
-
-TEST_CASE("applyRawBoost: zero-pixel input → empty output") {
-  REQUIRE(util::applyRawBoost({}, 0).empty());
-}
-
-TEST_CASE("applyRawBoost: black stays black, white clamps to white") {
-  // 0 × any multiplier = 0; 255 × 2 = 510 → clamped to 255
-  const std::vector<uint8_t> src = {0, 0, 0,  255, 255, 255};
-  const auto out = util::applyRawBoost(src, 2);
-  REQUIRE(out[0] == 0);
-  REQUIRE(out[3] == 255);
-}
-
-TEST_CASE("applyRawBoost: kRawBoostEV=1 doubles mid-range values and clamps highlights") {
-  // mul = pow(2, 1.0) = 2.0
-  const std::vector<uint8_t> src = {50, 100, 200};
-  const auto out = util::applyRawBoost(src, 1);
-  REQUIRE(out[0] == 100);  // 50*2=100
-  REQUIRE(out[1] == 200);  // 100*2=200
-  REQUIRE(out[2] == 255);  // 200*2=400 clamped to 255
-}
-
-TEST_CASE("applyRawBoost: output size matches input size") {
-  const std::vector<uint8_t> src(6 * 3, 128);  // 6 pixels
-  REQUIRE(util::applyRawBoost(src, 6).size() == src.size());
-}
-
 // ── Pipeline order (exposure before contrast) ─────────────────────────────────
 
 TEST_CASE("applyAdjustments: exposure then contrast applied in order") {
