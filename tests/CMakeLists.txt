@@ -65,3 +65,11 @@ target_link_libraries(test_hash_dedup PRIVATE
 )
 target_compile_definitions(test_hash_dedup PRIVATE SPDLOG_COMPILED_LIB)
 add_test(NAME test_hash_dedup COMMAND test_hash_dedup)
+
+# ── test_thumb_crop ────────────────────────────────────────────────────────────
+add_executable(test_thumb_crop
+    test_thumb_crop.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/ThumbCropUV.cpp
+)
+target_link_libraries(test_thumb_crop PRIVATE Catch2::Catch2WithMain)
+add_test(NAME test_thumb_crop COMMAND test_thumb_crop)

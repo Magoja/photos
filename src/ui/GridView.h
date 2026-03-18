@@ -1,8 +1,10 @@
 #pragma once
 #include "TextureManager.h"
 #include "FilterBar.h"
+#include "ThumbCropUV.h"
 #include "catalog/PhotoRepository.h"
 #include <vector>
+#include <unordered_map>
 #include <unordered_set>
 #include <cstdint>
 #include <functional>
@@ -64,6 +66,8 @@ class GridView {
 
   int64_t primaryId_ = 0;                    // anchor / primary selection
   std::unordered_set<int64_t> selectedIds_;  // additional Cmd/Shift selected (excludes primary)
+
+  std::unordered_map<int64_t, ui::ThumbMeta> thumbMeta_;  // per-photo crop/pre-crop flags
 
   static constexpr float kThumbBase = 120.f;
   static constexpr float kThumbPad = 4.f;

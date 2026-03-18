@@ -2,6 +2,8 @@
 #include "Database.h"
 #include <map>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 #include <optional>
 #include <cstdint>
@@ -82,6 +84,11 @@ class PhotoRepository {
 
   std::vector<int64_t> queryByFolder(int64_t folderId, bool pickedOnly = false);
   std::vector<int64_t> queryAll(bool pickedOnly = false);
+
+  // Returns {id → {thumbPath, editSettings}} for all photos in a folder.
+  // folderId == 0 means all photos. Single SQL query; called once per reload().
+  std::unordered_map<int64_t, std::pair<std::string, std::string>>
+    queryThumbMeta(int64_t folderId, bool pickedOnly);
 
   void updatePicked(int64_t id, int picked);
   void updateThumb(int64_t id, const std::string& path, int w, int h, int64_t mtime);

@@ -1,4 +1,6 @@
 #include "FullscreenView.h"
+#include "ThumbCropUV.h"
+#include "catalog/EditSettings.h"
 #include <algorithm>
 #include <ranges>
 
@@ -91,11 +93,62 @@ void FullscreenView::drawBackground(ImDrawList* dl, ImVec2 scrSz) const {
 
 void FullscreenView::drawPhoto(ImDrawList* dl, ImVec2 scrSz) const {
   const auto tex = texMgr_.get(currentId_);
-  const float imgW = scrSz.x * zoom_;
-  const float imgH = scrSz.y * zoom_;
+  if (!tex || tex == texMgr_.placeholder()) { return; }
+
+  ImVec2 uvMin{0.f, 0.f}, uvMax{1.f, 1.f};
+  float cropAspect = 1.f;
+  const auto rec = repo_.findById(currentId_);
+  if (rec) {
+    ui::ThumbMeta m;
+    m.preCropped = rec->thumbPath.find("thumbs_edit") != std::string::npos;
+    if (!m.preCropped) {
+      const auto es = catalog::EditSettings::fromJson(rec->editSettings);
+      m.cropX = es.crop.x;
+      m.cropY = es.crop.y;
+      m.cropW = es.crop.w;
+      m.cropH = es.crop.h;
+    }
+    const auto uv = ui::thumbCropUV(m);
+    uvMin = {uv.u0, uv.v0};
+    uvMax = {uv.u1, uv.v1};
+
+    if (m.preCropped) {
+      // Thumbnail already incorporates the crop — use its stored dimensions for
+      // the correct letterbox aspect ratio.
+      if (rec->thumbWidth > 0 && rec->thumbHeight > 0) {
+        cropAspect = (float)rec->thumbWidth / (float)rec->thumbHeight;
+      }
+    } else {
+      // Original camera JPEG — compute aspect from the crop region.
+      if (rec->widthPx > 0 && rec->heightPx > 0) {
+        cropAspect = (m.cropW * (float)rec->widthPx) /
+                     (m.cropH * (float)rec->heightPx);
+      } else {
+        cropAspect = m.cropW / m.cropH;
+      }
+    }
+  } else {
+    const auto [texW, texH] = texMgr_.getSize(currentId_);
+    if (texW > 0 && texH > 0) {
+      cropAspect = (float)texW / (float)texH;
+    }
+  }
+
+  // Letterbox: fit the crop region into the screen, then scale by zoom_.
+  const float screenAspect = scrSz.x / scrSz.y;
+  float baseW, baseH;
+  if (cropAspect > screenAspect) {
+    baseW = scrSz.x;
+    baseH = baseW / cropAspect;
+  } else {
+    baseH = scrSz.y;
+    baseW = baseH * cropAspect;
+  }
+  const float imgW = baseW * zoom_;
+  const float imgH = baseH * zoom_;
   const float x = (scrSz.x - imgW) * 0.5f + panX_;
   const float y = (scrSz.y - imgH) * 0.5f + panY_;
-  dl->AddImage(reinterpret_cast<ImTextureID>(tex), {x, y}, {x + imgW, y + imgH});
+  dl->AddImage(reinterpret_cast<ImTextureID>(tex), {x, y}, {x + imgW, y + imgH}, uvMin, uvMax);
 }
 
 void FullscreenView::drawStatusOverlay(ImDrawList* dl, ImVec2 scrSz) const {

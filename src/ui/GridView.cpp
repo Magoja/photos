@@ -1,4 +1,6 @@
 #include "GridView.h"
+#include "ThumbCropUV.h"
+#include "catalog/EditSettings.h"
 #include "imgui.h"
 #include <algorithm>
 #include <ranges>
@@ -17,10 +19,26 @@ void GridView::loadFolder(int64_t folderId, FilterMode filter) {
 }
 
 void GridView::reload() {
-  bool pickedOnly = (filter_ == FilterMode::Picked);
+  const bool pickedOnly = (filter_ == FilterMode::Picked);
   photoIds_ =
     (folderId_ == 0) ? repo_.queryAll(pickedOnly) : repo_.queryByFolder(folderId_, pickedOnly);
   requested_.clear();
+
+  thumbMeta_.clear();
+  const auto raw = repo_.queryThumbMeta(folderId_, pickedOnly);
+  for (const auto& [id, paths] : raw) {
+    const auto& [tPath, esJson] = paths;
+    ThumbMeta m;
+    m.preCropped = tPath.find("thumbs_edit") != std::string::npos;
+    if (!m.preCropped) {
+      const auto es = catalog::EditSettings::fromJson(esJson);
+      m.cropX = es.crop.x;
+      m.cropY = es.crop.y;
+      m.cropW = es.crop.w;
+      m.cropH = es.crop.h;
+    }
+    thumbMeta_[id] = m;
+  }
 }
 
 void GridView::onThumbReady(int64_t photoId, const std::vector<uint8_t>& jpegBytes) {
@@ -154,7 +172,11 @@ void GridView::render() {
       const auto [tw, th] = stdLoaded   ? texMgr_.getSize(pid)
                           : microLoaded ? texMgr_.getSize(pid + kMicroOffset)
                           : std::pair{1, 1};
-      auto [imgW, imgH] = computeLetterboxSize(tw, th, thumbW, thumbH);
+      const auto& meta = thumbMeta_.count(pid) ? thumbMeta_.at(pid) : ThumbMeta{};
+      const auto [effW, effH] = stdLoaded
+        ? std::pair{static_cast<int>(tw * meta.cropW), static_cast<int>(th * meta.cropH)}
+        : std::pair{tw, th};
+      auto [imgW, imgH] = computeLetterboxSize(effW, effH, thumbW, thumbH);
 
       if (col > 0) {
         ImGui::SameLine();
@@ -175,7 +197,9 @@ void GridView::render() {
       float offY = (thumbH - imgH) * 0.5f + kThumbPad;
       ImVec2 imgMin = {cellPos.x + offX, cellPos.y + offY};
       ImVec2 imgMax = {imgMin.x + imgW, imgMin.y + imgH};
-      dl->AddImage(reinterpret_cast<ImTextureID>(displayTex), imgMin, imgMax);
+      const auto uv = thumbCropUV(meta);
+      dl->AddImage(reinterpret_cast<ImTextureID>(displayTex), imgMin, imgMax,
+                   {uv.u0, uv.v0}, {uv.u1, uv.v1});
 
       if (isPrimary) {
         dl->AddRect(cellPos, {cellPos.x + cellW, cellPos.y + cellH}, IM_COL32(255, 200, 50, 255),

@@ -323,6 +323,35 @@ std::vector<int64_t> PhotoRepository::queryAll(bool pickedOnly) {
   return collectIds(s);
 }
 
+std::unordered_map<int64_t, std::pair<std::string, std::string>>
+PhotoRepository::queryThumbMeta(int64_t folderId, bool pickedOnly) {
+  static const std::string kSelect =
+    "SELECT id, COALESCE(thumb_path,''), COALESCE(edit_settings,'{}') FROM photos";
+  static const std::string kOrderBy = " ORDER BY COALESCE(capture_time,import_time)";
+
+  std::string sql = kSelect;
+  if (folderId != 0 && pickedOnly) {
+    sql += " WHERE folder_id=? AND picked=1";
+  } else if (folderId != 0) {
+    sql += " WHERE folder_id=?";
+  } else if (pickedOnly) {
+    sql += " WHERE picked=1";
+  }
+  sql += kOrderBy;
+
+  Stmt s = db_.prepare(sql);
+  if (folderId != 0) {
+    s.bind(1, folderId);
+  }
+
+  std::unordered_map<int64_t, std::pair<std::string, std::string>> out;
+  while (s.step()) {
+    const int64_t id = s.getInt64(0);
+    out[id] = {s.getText(1), s.getText(2)};
+  }
+  return out;
+}
+
 void PhotoRepository::updatePicked(int64_t id, int picked) {
   auto s = db_.prepare("UPDATE photos SET picked=? WHERE id=?");
   s.bind(1, picked);
