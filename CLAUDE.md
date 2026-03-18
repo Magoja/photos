@@ -2,10 +2,10 @@
 
 ## How to continue
 Say "Continue the project" to pick up the next unchecked task below.
-Claude will: read this file → implement the next `- [ ]` task → run verification → **create a git commit** → check it off `- [x]` → stop.
+Claude will: read this file → implement the next `- [ ]` task → run verification → **run unit tests** (`ctest --preset debug --output-on-failure`) → **create a git commit** → check it off `- [x]` → stop.
 
 ## Bug / crash fixes
-When fixing a crash or bug: implement the fix, build, and explain the change — but **do NOT commit** until the user confirms the fix works.
+When fixing a crash or bug: implement the fix, build, run unit tests, and explain the change — but **do NOT commit** until the user confirms the fix works.
 
 ## Stack
 - C++20 + Obj-C++ (.mm) for macOS APIs (Metal, DiskArbitration, NSOpenPanel)
