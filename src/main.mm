@@ -656,12 +656,12 @@ int main(int /*argc*/, char** /*argv*/) {
       renderPhotosPanel(ctx);
       renderStatusBar(ctx);
 
-      settingsPanel.render();
       fullscreen.render();
       editView.render();
       importDlg.render();
       exportDlg.render();
       metaSyncDlg.render();
+      settingsPanel.render();
 
       ImGui::Render();
 

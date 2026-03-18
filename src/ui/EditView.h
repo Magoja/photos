@@ -57,8 +57,9 @@ class EditView {
   TextureManager&           texMgr_;
   MTLDevicePtr              device_;
 
-  bool     open_        = false;
-  bool     justOpened_  = false;
+  bool     open_             = false;
+  bool     justOpened_       = false;
+  bool     thumbIsPreCropped_ = false;
   int64_t  photoId_     = 0;
   EditMode mode_        = EditMode::Adjust;
   bool     tabSyncNeeded_ = false;

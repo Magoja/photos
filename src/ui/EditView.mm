@@ -158,10 +158,12 @@ void EditView::open(int64_t photoId) {
     settings_ = catalog::EditSettings::fromJson(rec->editSettings);
     origW_ = rec->widthPx;
     origH_ = rec->heightPx;
+    thumbIsPreCropped_ = rec->thumbPath.find("thumbs_edit") != std::string::npos;
   } else {
     settings_ = {};
     origW_ = 0;
     origH_ = 0;
+    thumbIsPreCropped_ = false;
   }
   saved_ = settings_;
 
@@ -673,7 +675,22 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
 
   const float areaW = (areaMax.x - areaMin.x) * 0.9f;
   const float areaH = (areaMax.y - areaMin.y) * 0.9f;
-  const float imgAspect  = (float)displayTex.width / (float)displayTex.height;
+  // When using the fallback thumbnail in Adjust mode, derive aspect ratio from
+  // the crop region so the letterboxed placeholder matches the LibRaw preview.
+  // Skip crop scaling if the thumbnail already incorporates the crop (thumbs_edit).
+  const float imgAspect = [&]() -> float {
+    if (previewTex_ != nullptr) {
+      return (float)displayTex.width / (float)displayTex.height;
+    }
+    if (mode_ == EditMode::Adjust) {
+      if (thumbIsPreCropped_) {
+        return (float)displayTex.width / (float)displayTex.height;
+      }
+      return (settings_.crop.w * (float)displayTex.width) /
+             (settings_.crop.h * (float)displayTex.height);
+    }
+    return (float)displayTex.width / (float)displayTex.height;
+  }();
   const float areaAspect = areaW / areaH;
 
   float imgW, imgH;
@@ -709,7 +726,13 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
                      rotPt(imgMax.x, imgMax.y), rotPt(imgMin.x, imgMax.y),
                      {0, 0}, {1, 0}, {1, 1}, {0, 1});
   } else {
-    dl->AddImage(reinterpret_cast<ImTextureID>(displayTex), imgMin, imgMax);
+    ImVec2 uvMin{0.f, 0.f}, uvMax{1.f, 1.f};
+    // Apply crop UV only when thumbnail is the original camera JPEG (not pre-cropped).
+    if (mode_ == EditMode::Adjust && previewTex_ == nullptr && !thumbIsPreCropped_) {
+      uvMin = {settings_.crop.x, settings_.crop.y};
+      uvMax = {settings_.crop.x + settings_.crop.w, settings_.crop.y + settings_.crop.h};
+    }
+    dl->AddImage(reinterpret_cast<ImTextureID>(displayTex), imgMin, imgMax, uvMin, uvMax);
   }
 
   if (mode_ == EditMode::Crop) {
