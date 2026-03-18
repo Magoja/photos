@@ -153,8 +153,8 @@ void Importer::run() {
       }
 
       if (!dec.thumbJpeg.empty() && pid > 0) {
-        cache.generate(pid, hash, dec.thumbJpeg, repo);
-        cache.generateMicro(pid, hash, dec.thumbJpeg, repo);
+        cache.generate(pid, hash, dec.thumbJpeg, repo, dec.lumaScale);
+        cache.generateMicro(pid, hash, dec.thumbJpeg, repo, dec.lumaScale);
       }
 
       ++stats_.imported;

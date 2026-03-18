@@ -9,6 +9,7 @@ namespace import_ns {
 struct DecodeResult {
   std::vector<uint8_t> thumbJpeg;  // embedded JPEG thumbnail bytes
   ExifData exif;
+  float lumaScale = 1.0f;  // brightness ratio (LibRaw luma / JPEG luma), clamped [0.25, 1.0]
   bool ok = false;
   std::string error;
 };

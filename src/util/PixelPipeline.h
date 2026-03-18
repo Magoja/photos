@@ -14,6 +14,9 @@ std::vector<uint8_t> downsampleRgb(const uint8_t* src, int srcW, int srcH,
 // Convert interleaved RGB (3 bytes/pixel) to RGBA (4 bytes/pixel, alpha=255).
 std::vector<uint8_t> rgbToRgba(const std::vector<uint8_t>& rgb, int pixelCount);
 
+// BT.601 average luma of an interleaved RGB (3 bytes/pixel) buffer.
+float computeLuma(const uint8_t* rgb, int pixelCount);
+
 // Apply tone adjustments (exposure, temperature, contrast, saturation) to an
 // interleaved RGB buffer (3 bytes/pixel, w*h pixels).
 //

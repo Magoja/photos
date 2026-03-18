@@ -18,29 +18,36 @@ class ThumbnailCache {
   explicit ThumbnailCache(const std::string& cacheRoot);
 
   // Generate and store a standard thumbnail from raw JPEG bytes.
+  // scale < 1.0 darkens the thumbnail to match LibRaw neutral brightness.
   // Returns the path written, or "" on failure.
-  std::string store(const std::string& hash, const std::vector<uint8_t>& jpegBytes);
+  std::string store(const std::string& hash, const std::vector<uint8_t>& jpegBytes,
+                    float scale = 1.0f);
 
   // Return cached standard path if it exists, "" otherwise.
   std::string lookup(const std::string& hash) const;
 
   // Generate standard thumbnail for a photo already in DB.
   bool generate(int64_t photoId, const std::string& hash, const std::vector<uint8_t>& thumbJpeg,
-                PhotoRepository& repo);
+                PhotoRepository& repo, float scale = 1.0f);
 
   // Generate and store a micro thumbnail from raw JPEG bytes.
+  // scale < 1.0 darkens the thumbnail to match LibRaw neutral brightness.
   // Returns the path written, or "" on failure.
-  std::string storeMicro(const std::string& hash, const std::vector<uint8_t>& jpegBytes);
+  std::string storeMicro(const std::string& hash, const std::vector<uint8_t>& jpegBytes,
+                         float scale = 1.0f);
 
   // Return cached micro path if it exists, "" otherwise.
   std::string lookupMicro(const std::string& hash) const;
 
   // Generate micro thumbnail for a photo already in DB.
   bool generateMicro(int64_t photoId, const std::string& hash,
-                     const std::vector<uint8_t>& thumbJpeg, PhotoRepository& repo);
+                     const std::vector<uint8_t>& thumbJpeg, PhotoRepository& repo,
+                     float scale = 1.0f);
 
   // Resize JPEG to fit within maxDim×maxDim, preserving aspect ratio.
-  static std::vector<uint8_t> resizeJpeg(const std::vector<uint8_t>& src, int maxDim);
+  // scale < 1.0 darkens the output by multiplying each pixel value.
+  static std::vector<uint8_t> resizeJpeg(const std::vector<uint8_t>& src, int maxDim,
+                                          float scale = 1.0f);
 
  private:
   std::string root_;

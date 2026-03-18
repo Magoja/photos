@@ -3,6 +3,8 @@
 #include <spdlog/spdlog.h>
 #include <filesystem>
 #include <fstream>
+#include <cmath>
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
@@ -58,7 +60,8 @@ static std::pair<int, int> readJpegDimensions(const std::vector<uint8_t>& jpeg) 
 
 // ── ThumbnailCache ────────────────────────────────────────────────────────────
 
-std::vector<uint8_t> ThumbnailCache::resizeJpeg(const std::vector<uint8_t>& src, int maxDim) {
+std::vector<uint8_t> ThumbnailCache::resizeJpeg(const std::vector<uint8_t>& src, int maxDim,
+                                                float scale) {
   tjhandle tj = tjInitDecompress();
   if (!tj) {
     return src;
@@ -81,6 +84,12 @@ std::vector<uint8_t> ThumbnailCache::resizeJpeg(const std::vector<uint8_t>& src,
   }
   tjDestroy(tj);
 
+  if (scale < 0.999f) {
+    for (auto& v : rgb) {
+      v = static_cast<uint8_t>(std::lround(std::clamp(v * scale, 0.f, 255.f)));
+    }
+  }
+
   tjhandle tjc = tjInitCompress();
   if (!tjc) {
     return src;
@@ -100,12 +109,13 @@ std::vector<uint8_t> ThumbnailCache::resizeJpeg(const std::vector<uint8_t>& src,
   return result;
 }
 
-std::string ThumbnailCache::store(const std::string& hash, const std::vector<uint8_t>& jpegBytes) {
+std::string ThumbnailCache::store(const std::string& hash, const std::vector<uint8_t>& jpegBytes,
+                                  float scale) {
   if (hash.empty() || jpegBytes.empty()) {
     return "";
   }
 
-  auto thumbData = resizeJpeg(jpegBytes, kMaxDim);
+  auto thumbData = resizeJpeg(jpegBytes, kMaxDim, scale);
   auto p = pathFor(hash);
   fs::create_directories(fs::path(p).parent_path());
 
@@ -120,7 +130,8 @@ std::string ThumbnailCache::store(const std::string& hash, const std::vector<uin
 }
 
 bool ThumbnailCache::generate(int64_t photoId, const std::string& hash,
-                              const std::vector<uint8_t>& thumbJpeg, PhotoRepository& repo) {
+                              const std::vector<uint8_t>& thumbJpeg, PhotoRepository& repo,
+                              float scale) {
   if (thumbJpeg.empty()) {
     return false;
   }
@@ -131,12 +142,12 @@ bool ThumbnailCache::generate(int64_t photoId, const std::string& hash,
     return true;
   }
 
-  auto path = store(hash, thumbJpeg);
+  auto path = store(hash, thumbJpeg, scale);
   if (path.empty()) {
     return false;
   }
 
-  auto scaled = resizeJpeg(thumbJpeg, kMaxDim);
+  auto scaled = resizeJpeg(thumbJpeg, kMaxDim, scale);
   auto [w, h] = readJpegDimensions(scaled);
   if (w == 0) {
     w = kMaxDim;
@@ -156,12 +167,12 @@ std::string ThumbnailCache::lookupMicro(const std::string& hash) const {
 }
 
 std::string ThumbnailCache::storeMicro(const std::string& hash,
-                                       const std::vector<uint8_t>& jpegBytes) {
+                                       const std::vector<uint8_t>& jpegBytes, float scale) {
   if (hash.empty() || jpegBytes.empty()) {
     return "";
   }
 
-  const auto thumbData = resizeJpeg(jpegBytes, kMicroDim);
+  const auto thumbData = resizeJpeg(jpegBytes, kMicroDim, scale);
   const auto p = microPathFor(hash);
   fs::create_directories(fs::path(p).parent_path());
 
@@ -176,7 +187,8 @@ std::string ThumbnailCache::storeMicro(const std::string& hash,
 }
 
 bool ThumbnailCache::generateMicro(int64_t photoId, const std::string& hash,
-                                   const std::vector<uint8_t>& thumbJpeg, PhotoRepository& repo) {
+                                   const std::vector<uint8_t>& thumbJpeg, PhotoRepository& repo,
+                                   float scale) {
   if (thumbJpeg.empty()) {
     return false;
   }
@@ -187,7 +199,7 @@ bool ThumbnailCache::generateMicro(int64_t photoId, const std::string& hash,
     return true;
   }
 
-  const auto path = storeMicro(hash, thumbJpeg);
+  const auto path = storeMicro(hash, thumbJpeg, scale);
   if (path.empty()) {
     return false;
   }

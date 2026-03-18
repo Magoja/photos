@@ -192,6 +192,28 @@ TEST_CASE("rgbToRgba: zero pixels → empty output") {
   REQUIRE(util::rgbToRgba(rgb, 0).empty());
 }
 
+// ── computeLuma ───────────────────────────────────────────────────────────────
+
+TEST_CASE("computeLuma: empty (0 pixels) returns 0") {
+  REQUIRE(util::computeLuma(nullptr, 0) == Approx(0.f));
+}
+
+TEST_CASE("computeLuma: black image returns 0") {
+  const std::vector<uint8_t> rgb(9, 0);  // 3 pixels, all black
+  REQUIRE(util::computeLuma(rgb.data(), 3) == Approx(0.f));
+}
+
+TEST_CASE("computeLuma: white image returns 255") {
+  const std::vector<uint8_t> rgb(9, 255);  // 3 pixels, all white
+  REQUIRE(util::computeLuma(rgb.data(), 3) == Approx(255.f).epsilon(0.01));
+}
+
+TEST_CASE("computeLuma: BT.601 weights — pure red gives 0.299*255") {
+  // Single pixel: R=255, G=0, B=0 → luma = 0.299 * 255 ≈ 76.245
+  const std::vector<uint8_t> rgb = {255, 0, 0};
+  REQUIRE(util::computeLuma(rgb.data(), 1) == Approx(0.299f * 255.f).epsilon(0.01));
+}
+
 // ── Pipeline order (exposure before contrast) ─────────────────────────────────
 
 TEST_CASE("applyAdjustments: exposure then contrast applied in order") {

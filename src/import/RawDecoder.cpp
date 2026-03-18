@@ -1,9 +1,12 @@
 #include "RawDecoder.h"
+#include "util/PixelPipeline.h"
 #include <libraw/libraw.h>
+#include <turbojpeg.h>
 #include <spdlog/spdlog.h>
 #include <cstring>
 #include <cstdio>
 #include <cmath>
+#include <algorithm>
 #include <memory>
 
 namespace import_ns {
@@ -72,6 +75,57 @@ static double gpsToDecimal(const float pos[3], const char ref) {
   return deg;
 }
 
+// ── Luma scale helpers ────────────────────────────────────────────────────────
+
+// Decode jpeg at 1/8 size; return BT.601 average luma, or -1 on error.
+static float computeJpegLuma(const std::vector<uint8_t>& jpeg) {
+  tjhandle tj = tjInitDecompress();
+  if (!tj) { return -1.f; }
+  int srcW = 0, srcH = 0, subsamp = 0;
+  if (tjDecompressHeader2(tj, const_cast<unsigned char*>(jpeg.data()),
+                          static_cast<unsigned long>(jpeg.size()),
+                          &srcW, &srcH, &subsamp) < 0) {
+    tjDestroy(tj);
+    return -1.f;
+  }
+  const int dstW = std::max(1, srcW / 8);
+  const int dstH = std::max(1, srcH / 8);
+  std::vector<uint8_t> rgb(static_cast<size_t>(dstW * dstH) * 3);
+  tjDecompress2(tj, const_cast<unsigned char*>(jpeg.data()),
+                static_cast<unsigned long>(jpeg.size()),
+                rgb.data(), dstW, 0, dstH, TJPF_RGB, TJFLAG_FASTDCT);
+  tjDestroy(tj);
+  return util::computeLuma(rgb.data(), dstW * dstH);
+}
+
+// Do a half-size LibRaw decode on an already-open (but not yet unpacked) raw instance.
+// Returns the luminance scale (LibRaw luma / jpeg luma), clamped to [0.25, 1.0].
+// Returns 1.0 on any failure.
+static float computeRawLumaScale(LibRaw& raw, const std::vector<uint8_t>& thumbJpeg) {
+  if (raw.imgdata.idata.raw_count == 0) { return 1.f; }
+
+  const float jpegLuma = computeJpegLuma(thumbJpeg);
+  if (jpegLuma < 1.f) { return 1.f; }
+
+  raw.imgdata.params.half_size     = 1;
+  raw.imgdata.params.output_bps    = 8;
+  raw.imgdata.params.use_camera_wb = 1;
+  if (raw.unpack()        != LIBRAW_SUCCESS) { return 1.f; }
+  if (raw.dcraw_process() != LIBRAW_SUCCESS) { return 1.f; }
+
+  libraw_processed_image_t* img = raw.dcraw_make_mem_image();
+  if (!img || img->type != LIBRAW_IMAGE_BITMAP || img->colors != 3) {
+    if (img) { LibRaw::dcraw_clear_mem(img); }
+    return 1.f;
+  }
+  const int pixelCount = img->width * img->height;
+  const float rawLuma = util::computeLuma(img->data, pixelCount);
+  LibRaw::dcraw_clear_mem(img);
+
+  if (rawLuma < 0.5f) { return 1.f; }
+  return std::clamp(rawLuma / jpegLuma, 0.25f, 1.0f);
+}
+
 // ── EXIF + GPS extraction ─────────────────────────────────────────────────────
 
 static void extractExif(LibRaw& raw, ExifData& ex) {
@@ -131,6 +185,10 @@ DecodeResult RawDecoder::decode(const std::string& filePath) {
 
   extractExif(*raw, result.exif);
   extractThumbnail(*raw, result);
+
+  if (!result.thumbJpeg.empty()) {
+    result.lumaScale = computeRawLumaScale(*raw, result.thumbJpeg);
+  }
 
   result.ok = true;
   return result;

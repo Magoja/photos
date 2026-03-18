@@ -40,6 +40,15 @@ std::vector<uint8_t> rgbToRgba(const std::vector<uint8_t>& rgb, int pixelCount) 
   return rgba;
 }
 
+float computeLuma(const uint8_t* rgb, int pixelCount) {
+  if (pixelCount <= 0) { return 0.f; }
+  double sum = 0.0;
+  for (int i = 0; i < pixelCount; ++i) {
+    sum += 0.299 * rgb[i * 3] + 0.587 * rgb[i * 3 + 1] + 0.114 * rgb[i * 3 + 2];
+  }
+  return static_cast<float>(sum / pixelCount);
+}
+
 std::vector<uint8_t> applyAdjustments(const std::vector<uint8_t>& src,
                                        int w, int h,
                                        const catalog::EditSettings& s) {
