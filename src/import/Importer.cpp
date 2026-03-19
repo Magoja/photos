@@ -83,6 +83,7 @@ static PhotoRecord buildPhotoRecord(const DecodeResult& dec, int64_t folderId,
   p.gpsLat = dec.exif.gpsLat;
   p.gpsLon = dec.exif.gpsLon;
   p.gpsAltM = dec.exif.gpsAltM;
+  p.lumaScale = dec.lumaScale;
   return p;
 }
 

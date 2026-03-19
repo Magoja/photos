@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 #include "catalog/Database.h"
 #include "catalog/Schema.h"
 #include "catalog/PhotoRepository.h"
@@ -205,6 +206,58 @@ TEST_CASE("App settings round-trip", "[db]") {
   REQUIRE(repo.getSetting("mykey") == "myvalue");
   repo.setSetting("mykey", "updated");
   REQUIRE(repo.getSetting("mykey") == "updated");
+}
+
+// ── luma_scale round-trip ─────────────────────────────────────────────────────
+static int64_t insertFolderForTest(PhotoRepository& repo, const std::string& suffix) {
+  VolumeRecord v;
+  v.uuid = "UV" + suffix;
+  v.label = "L" + suffix;
+  v.mountPath = "/V" + suffix;
+  const int64_t vid = repo.upsertVolume(v);
+  FolderRecord folder;
+  folder.volumeId = vid;
+  folder.path = "/V" + suffix + "/DCIM";
+  folder.name = "DCIM";
+  return repo.upsertFolder(folder);
+}
+
+TEST_CASE("PhotoRepository: luma_scale stored and retrieved", "[db]") {
+  TempDb f;
+  PhotoRepository repo(*f.db);
+  const int64_t fid = insertFolderForTest(repo, "LS1");
+
+  PhotoRecord p;
+  p.folderId = fid;
+  p.filename = "test_luma.CR2";
+  p.fileSize = 1000;
+  p.lumaScale = 0.63f;
+
+  const int64_t pid = repo.insertPhoto(p);
+  REQUIRE(pid > 0);
+
+  const auto found = repo.findById(pid);
+  REQUIRE(found.has_value());
+  REQUIRE(found->lumaScale == Catch::Approx(0.63f).epsilon(0.001));
+}
+
+TEST_CASE("PhotoRepository: luma_scale defaults to 1.0", "[db]") {
+  TempDb f;
+  PhotoRepository repo(*f.db);
+  const int64_t fid = insertFolderForTest(repo, "LS2");
+
+  PhotoRecord p;
+  p.folderId = fid;
+  p.filename = "test_default.CR2";
+  p.fileSize = 1000;
+  // lumaScale left at default (1.0f)
+
+  const int64_t pid = repo.insertPhoto(p);
+  REQUIRE(pid > 0);
+
+  const auto found = repo.findById(pid);
+  REQUIRE(found.has_value());
+  REQUIRE(found->lumaScale == Catch::Approx(1.0f).epsilon(0.001));
 }
 
 // ── Export presets seeded ─────────────────────────────────────────────────────

@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS photos (
     thumb_mtime     INTEGER,
     thumb_micro_path TEXT,
     edit_settings   TEXT    NOT NULL DEFAULT '{}',
+    luma_scale      REAL    NOT NULL DEFAULT 1.0,
     UNIQUE(folder_id, filename)
 );
 
@@ -114,6 +115,16 @@ INSERT OR IGNORE INTO export_presets (name, quality, max_width, max_height)
 
 // ── Migration helpers ─────────────────────────────────────────────────────────
 
+static void applyV4(Database& db) {
+  try {
+    db.exec("ALTER TABLE photos ADD COLUMN luma_scale REAL NOT NULL DEFAULT 1.0");
+  } catch (...) {
+    // Column may already exist on a partially-migrated DB — safe to ignore.
+  }
+  db.exec("INSERT OR IGNORE INTO schema_version(version) VALUES (4)");
+  spdlog::info("Schema v4 applied: added luma_scale");
+}
+
 static void applyV3(Database& db) {
   try {
     db.exec("ALTER TABLE photos ADD COLUMN thumb_micro_path TEXT");
@@ -156,8 +167,11 @@ void Schema::apply(Database& db, const std::string& libraryRoot) {
   if (ver < 3) {
     applyV3(db);
   }
+  if (ver < 4) {
+    applyV4(db);
+  }
 
-  spdlog::debug("Schema version: {}", ver < 3 ? 3 : (int)ver);
+  spdlog::debug("Schema version: {}", ver < 4 ? 4 : (int)ver);
 }
 
 }  // namespace catalog

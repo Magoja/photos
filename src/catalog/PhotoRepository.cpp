@@ -68,6 +68,7 @@ PhotoRecord PhotoRepository::rowToPhoto(Stmt& s) {
   p.thumbMtime = s.getInt64(c++);
   p.thumbMicroPath = s.getText(c++);
   p.editSettings = s.getText(c++);
+  p.lumaScale = static_cast<float>(s.getDouble(c++));
   return p;
 }
 
@@ -192,8 +193,8 @@ int64_t PhotoRepository::insertPhoto(const PhotoRecord& p) {
     "INSERT INTO photos("
     "folder_id,filename,file_hash,file_size,capture_time,"
     "camera_make,camera_model,lens_model,focal_length_mm,aperture,"
-    "shutter_speed,iso,width_px,height_px,edit_settings)"
-    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    "shutter_speed,iso,width_px,height_px,edit_settings,luma_scale)"
+    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
   auto s = db_.prepare(sql);
   s.bind(1, p.folderId);
   s.bind(2, p.filename);
@@ -254,6 +255,7 @@ int64_t PhotoRepository::insertPhoto(const PhotoRecord& p) {
     s.bindNull(14);
   }
   s.bind(15, p.editSettings.empty() ? "{}" : p.editSettings);
+  s.bind(16, static_cast<double>(p.lumaScale));
   s.step();
   return db_.lastInsertRowid();
 }
@@ -267,7 +269,7 @@ std::optional<PhotoRecord> PhotoRepository::findById(int64_t id) {
     "COALESCE(gps_lat,0),COALESCE(gps_lon,0),COALESCE(gps_alt_m,0),"
     "picked,rating,COALESCE(color_label,''),COALESCE(thumb_path,''),"
     "COALESCE(thumb_width,0),COALESCE(thumb_height,0),COALESCE(thumb_mtime,0),"
-    "COALESCE(thumb_micro_path,''),COALESCE(edit_settings,'{}')"
+    "COALESCE(thumb_micro_path,''),COALESCE(edit_settings,'{}'),COALESCE(luma_scale,1.0)"
     " FROM photos WHERE id=?");
   s.bind(1, id);
   if (!s.step()) {

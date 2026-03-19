@@ -39,6 +39,7 @@ struct PhotoRecord {
   int64_t thumbMtime = 0;
   std::string thumbMicroPath;
   std::string editSettings = "{}";
+  float lumaScale = 1.0f;
 };
 
 struct FolderRecord {
