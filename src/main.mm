@@ -301,6 +301,10 @@ static void processGlobalHotkeys(RenderCtx& ctx) {
   if (ImGui::IsKeyPressed(ImGuiKey_R)) {
     openOrSwitchEditMode(ctx.fullscreen, ctx.editView, selId, ui::EditMode::Crop);
   }
+  if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { ctx.grid.navigatePrimary(-1); }
+  if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { ctx.grid.navigatePrimary(+1); }
+  if (ImGui::IsKeyPressed(ImGuiKey_UpArrow))    { ctx.grid.navigatePrimary(-ctx.grid.columnCount()); }
+  if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))  { ctx.grid.navigatePrimary(+ctx.grid.columnCount()); }
 }
 
 static void renderMenuBar(RenderCtx& ctx) {
@@ -376,6 +380,8 @@ static void renderPhotosPanel(RenderCtx& ctx) {
                            buildSelectionList(ctx.grid.selectedIds(), ctx.grid.primaryId()));
     }
     ImGui::PopStyleColor();
+  }
+  if (ctx.grid.primaryId() > 0) {
     ImGui::SameLine();
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.3f, 1.f));
     if (ImGui::Button("Export")) {

@@ -97,6 +97,21 @@ void GridView::handleCellClick(int64_t pid) {
   }
 }
 
+// ── Navigation ────────────────────────────────────────────────────────────────
+
+void GridView::navigatePrimary(int delta) {
+  if (photoIds_.empty() || primaryId_ <= 0) { return; }
+  const auto it = std::ranges::find(photoIds_, primaryId_);
+  if (it == photoIds_.end()) { return; }
+  const int idx  = static_cast<int>(std::distance(photoIds_.begin(), it));
+  const int next = std::clamp(idx + delta, 0, static_cast<int>(photoIds_.size()) - 1);
+  if (next == idx) { return; }
+  selectedIds_.clear();
+  primaryId_ = photoIds_[next];
+  scrollToPrimary_ = true;
+  if (onSelectCb_) { onSelectCb_(primaryId_); }
+}
+
 // ── Layout helpers ────────────────────────────────────────────────────────────
 
 static std::pair<int, int> computeVisibleRowRange(int totalRows, float rowH, float scrollY,
@@ -135,8 +150,25 @@ void GridView::render() {
   float cellH = thumbH + kThumbPad * 2.f;
 
   float panelW = ImGui::GetContentRegionAvail().x;
-  int cols = std::max(1, static_cast<int>(panelW / cellW));
+  cols_ = std::max(1, static_cast<int>(panelW / cellW));
+  const int cols = cols_;
   int totalRows = (static_cast<int>(photoIds_.size()) + cols - 1) / cols;
+
+  // Scroll primary into viewport when navigatePrimary() requested it
+  if (scrollToPrimary_ && primaryId_ > 0) {
+    scrollToPrimary_ = false;
+    const auto it = std::ranges::find(photoIds_, primaryId_);
+    if (it != photoIds_.end()) {
+      const int idx       = static_cast<int>(std::distance(photoIds_.begin(), it));
+      const int targetRow = idx / cols_;
+      const float targetY = targetRow * cellH;
+      const float scrollY = ImGui::GetScrollY();
+      const float viewH   = ImGui::GetContentRegionAvail().y;
+      if (targetY < scrollY || targetY + cellH > scrollY + viewH) {
+        ImGui::SetScrollY(targetY - viewH * 0.3f);
+      }
+    }
+  }
 
   auto [firstRow, lastRow] =
     computeVisibleRowRange(totalRows, cellH, ImGui::GetScrollY(), ImGui::GetWindowHeight());

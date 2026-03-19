@@ -21,7 +21,10 @@ void ExportDialog::open(int64_t primaryId, std::vector<int64_t> ids) {
   errorCount_ = 0;
   exporter_.reset();
 
-  // Default target to Desktop if not set
+  // Load persisted folder from DB on first open, then fall back to Desktop
+  if (targetPath_.empty()) {
+    targetPath_ = repo_.getSetting("export_target_path", "");
+  }
   if (targetPath_.empty()) {
     targetPath_ = util::desktopDir();
   }
@@ -87,6 +90,7 @@ void ExportDialog::render() {
     if (ImGui::Button("Browse...")) {
       if (auto p = util::pickFolder()) {
         targetPath_ = *p;
+        repo_.setSetting("export_target_path", targetPath_);
       }
     }
 

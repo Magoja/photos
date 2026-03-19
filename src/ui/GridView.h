@@ -36,6 +36,11 @@ class GridView {
   // Render the grid inside the current ImGui window
   void render();
 
+  // Move primary selection by delta cells (±1 for left/right, ±cols_ for up/down)
+  void navigatePrimary(int delta);
+
+  int columnCount() const { return cols_; }
+
   // Primary selection (compat: replaces old selectedId())
   int64_t selectedId() const { return primaryId_; }
   int64_t primaryId() const { return primaryId_; }
@@ -66,6 +71,9 @@ class GridView {
 
   int64_t primaryId_ = 0;                    // anchor / primary selection
   std::unordered_set<int64_t> selectedIds_;  // additional Cmd/Shift selected (excludes primary)
+
+  int cols_ = 1;                // updated each render(); used by navigatePrimary
+  bool scrollToPrimary_ = false; // set by navigatePrimary; consumed by render()
 
   std::unordered_map<int64_t, ui::ThumbMeta> thumbMeta_;  // per-photo crop/pre-crop flags
 
