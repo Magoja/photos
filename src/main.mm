@@ -188,8 +188,8 @@ static void setupThumbMissCallback(RenderCtx& ctx, util::ThreadPool& thumbPool) 
 
         {
           std::lock_guard lk(ctx.db.mutex());
-          ctx.thumbCache.generate(pid, rec->fileHash, dec.thumbJpeg, ctx.repo, rec->lumaScale);
-          ctx.thumbCache.generateMicro(pid, rec->fileHash, dec.thumbJpeg, ctx.repo, rec->lumaScale);
+          ctx.thumbCache.generate(pid, rec->fileHash, dec.thumbJpeg, ctx.repo, dec.lumaScale);
+          ctx.thumbCache.generateMicro(pid, rec->fileHash, dec.thumbJpeg, ctx.repo, dec.lumaScale);
         }
 
         // Now serve the freshly written standard file
