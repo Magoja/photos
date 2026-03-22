@@ -108,11 +108,12 @@ void EditView::open(int64_t photoId) {
   dragHandle_ = -1;
   aspectMode_ = 0;
 
-  // Clear source pixels so drawPreview falls back to texMgr_ grid thumbnail.
-  // Also release any retained fallback texture from the previous photo.
+  // Clear source pixels and release both Metal textures from the previous photo
+  // so drawPreview shows nothing until the new decode completes.
   originalRgb_.clear();
   srcW_ = 0;
   srcH_ = 0;
+  releasePreviewTex();
   [fallbackTex_ release];
   fallbackTex_ = nullptr;
 
@@ -806,15 +807,6 @@ void EditView::renderPreviewArea(ImVec2 scr, float previewW) {
   ImDrawList* const fgDl = ImGui::GetForegroundDrawList();
   fgDl->AddRectFilled({0.f, 0.f}, {previewW, previewAreaH}, IM_COL32(0, 0, 0, 230));
   drawPreview(fgDl, {0.f, 0.f}, {previewW, previewAreaH});
-  if (fullDecoding_) {
-    const char* kLoadingLabel = "Loading accurate preview...";
-    const ImVec2 textSz = ImGui::CalcTextSize(kLoadingLabel);
-    const ImVec2 textPos = {
-      (previewW - textSz.x) * 0.5f,
-      previewAreaH - textSz.y - 12.f,
-    };
-    fgDl->AddText(textPos, IM_COL32(200, 200, 200, 200), kLoadingLabel);
-  }
   if (mode_ == EditMode::Crop) {
     renderStraightenBar(previewW, scr.y);
   }
