@@ -97,6 +97,10 @@ set(COMMAND_SOURCES
     src/command/handlers/ImageRevertHandler.cpp
     src/command/handlers/ImageCropHandler.cpp
     src/command/handlers/ImageSaveHandler.cpp
+    src/command/handlers/CatalogPickHandler.cpp
+    src/command/handlers/CatalogOpenHandler.cpp
+    src/command/handlers/MetaSyncHandler.cpp
+    src/command/handlers/ExportHandler.cpp
 )
 
 set(UTIL_SOURCES

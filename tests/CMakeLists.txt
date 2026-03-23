@@ -114,11 +114,16 @@ set(COMMAND_SOURCES_TEST
     ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageRevertHandler.cpp
     ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageCropHandler.cpp
     ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageSaveHandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/command/handlers/CatalogPickHandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/command/handlers/CatalogOpenHandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/command/handlers/MetaSyncHandler.cpp
 )
 
 add_executable(test_command
     test_command_registry.cpp
     test_command_image.cpp
+    test_command_catalog.cpp
+    test_command_metasync.cpp
     ${COMMAND_SOURCES_TEST}
     ${CATALOG_SOURCES}
     ${UTIL_SOURCES_PLAIN}
