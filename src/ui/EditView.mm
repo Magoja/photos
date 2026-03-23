@@ -782,11 +782,15 @@ bool EditView::handleKeyCapture(ImVec2 scr) {
   if (!ImGui::GetIO().WantTextInput && !skipKeys) {
     if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
       if (mode_ == EditMode::Crop) {
+        settings_ = saved_;
         setMode(EditMode::Adjust);
       } else {
         settings_ = saved_;
         closed = true;
       }
+    }
+    if (mode_ == EditMode::Crop && ImGui::IsKeyPressed(ImGuiKey_Enter)) {
+      startSave();
     }
     if (ImGui::IsKeyPressed(ImGuiKey_F)) {
       closed = true;
@@ -854,7 +858,11 @@ bool EditView::renderSaveButtons(ImVec2 scr) {
   }
   if (cancelled) {
     settings_ = saved_;
-    close();
+    if (mode_ == EditMode::Crop) {
+      setMode(EditMode::Adjust);
+    } else {
+      close();
+    }
   }
   return cancelled;
 }
@@ -893,7 +901,8 @@ void EditView::pollSaveCompletion() {
     savedCb_(photoId_);
   }
   if (mode_ == EditMode::Crop) {
-    saved_ = settings_;  // update Cancel baseline; stay in edit view
+    saved_ = settings_;
+    setMode(EditMode::Adjust);
   } else {
     close();
   }
