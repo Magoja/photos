@@ -106,3 +106,24 @@ target_link_libraries(test_raw_decoder PRIVATE
     ${HB}/lib/libraw.dylib
 )
 add_test(NAME test_raw_decoder COMMAND test_raw_decoder)
+
+# ── test_command ───────────────────────────────────────────────────────────────
+set(COMMAND_SOURCES_TEST
+    ${CMAKE_SOURCE_DIR}/src/command/CommandRegistry.cpp
+)
+
+add_executable(test_command
+    test_command_registry.cpp
+    ${COMMAND_SOURCES_TEST}
+    ${CATALOG_SOURCES}
+    ${UTIL_SOURCES_PLAIN}
+)
+target_link_libraries(test_command PRIVATE
+    Catch2::Catch2WithMain
+    SQLite::SQLite3
+    ${HB}/lib/libspdlog.dylib
+    ${HB}/lib/libfmt.dylib
+    ${HB}/lib/libturbojpeg.dylib
+)
+target_compile_definitions(test_command PRIVATE SPDLOG_COMPILED_LIB)
+add_test(NAME test_command COMMAND test_command)

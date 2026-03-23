@@ -90,6 +90,10 @@ set(EXPORT_SOURCES
     src/export/Exporter.cpp
 )
 
+set(COMMAND_SOURCES
+    src/command/CommandRegistry.cpp
+)
+
 set(UTIL_SOURCES
     src/util/Platform.mm
     src/util/ThreadPool.cpp
@@ -108,6 +112,7 @@ set(APP_SOURCES
     ${IMPORT_SOURCES}
     ${UI_SOURCES}
     ${EXPORT_SOURCES}
+    ${COMMAND_SOURCES}
     ${UTIL_SOURCES}
     ${APP_ICON}
 )
