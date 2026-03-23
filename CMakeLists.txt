@@ -101,6 +101,7 @@ set(EXPORT_SOURCES
 
 set(COMMAND_SOURCES
     src/command/CommandRegistry.cpp
+    src/command/AppCommands.cpp
     src/command/handlers/ImageAdjustHandler.cpp
     src/command/handlers/ImageRevertHandler.cpp
     src/command/handlers/ImageCropHandler.cpp

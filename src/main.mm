@@ -41,14 +41,7 @@
 
 // Command system
 #include "command/CommandRegistry.h"
-#include "command/handlers/ImageAdjustHandler.h"
-#include "command/handlers/ImageRevertHandler.h"
-#include "command/handlers/ImageCropHandler.h"
-#include "command/handlers/ImageSaveHandler.h"
-#include "command/handlers/CatalogPickHandler.h"
-#include "command/handlers/CatalogOpenHandler.h"
-#include "command/handlers/MetaSyncHandler.h"
-#include "command/handlers/ExportHandler.h"
+#include "command/AppCommands.h"
 
 // Util
 #include "util/Platform.h"
@@ -591,37 +584,8 @@ int main(int /*argc*/, char** /*argv*/) {
   util::ThreadPool thumbPool(2);
 
   // ── Command registry ──────────────────────────────────────────────────────
-  command::CommandRegistry registry;
-
-  // image.* handlers (image.save's savedCb is null; EditView's pollSaveCompletion
-  // fires the grid reload after thumbnail regen completes, not immediately on save).
-  registry.registerHandler("image.adjust",
-      std::make_unique<command::ImageAdjustHandler>(repo,
-          [&](int64_t id) { texMgr.evict(id); texMgr.evict(id + ui::GridView::kMicroOffset); }));
-  registry.registerHandler("image.revert",
-      std::make_unique<command::ImageRevertHandler>(repo,
-          [&](int64_t id) { texMgr.evict(id); texMgr.evict(id + ui::GridView::kMicroOffset); }));
-  registry.registerHandler("image.crop",
-      std::make_unique<command::ImageCropHandler>(repo));
-  registry.registerHandler("image.save",
-      std::make_unique<command::ImageSaveHandler>(repo, nullptr));
-
-  // catalog.* handlers
-  registry.registerHandler("catalog.pick",
-      std::make_unique<command::CatalogPickHandler>(repo,
-          [&](int64_t /*id*/, int /*picked*/) { grid.reload(); }));
-  registry.registerHandler("catalog.photo.open",
-      std::make_unique<command::CatalogOpenHandler>(nullptr));
-
-  // metasync handler (doneCb is null; MetaSyncDialog fires its own doneCb from render())
-  registry.registerHandler("metasync.apply",
-      std::make_unique<command::MetaSyncHandler>(repo, nullptr));
-
-  // export handler — keep raw pointer for ExportDialog delegation
-  auto exportHandlerOwned = std::make_unique<command::ExportHandler>(repo, nullptr, nullptr);
-  command::ExportHandler* exportHandlerPtr = exportHandlerOwned.get();
-  registry.registerHandler("export.photos", std::move(exportHandlerOwned));
-  exportDlg.setHandler(exportHandlerPtr);
+  command::CommandRegistry registry =
+      command::buildRegistry(repo, texMgr, grid, exportDlg);
 
   // ── Wire everything up ────────────────────────────────────────────────────
   bool running = true;
