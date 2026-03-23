@@ -84,6 +84,7 @@ set(UI_SOURCES
     src/ui/MetaSyncDialog.cpp
     src/ui/SettingsPanel.cpp
     src/ui/ThumbCropUV.cpp
+    src/ui/ThumbEditApplier.cpp
 )
 
 set(EXPORT_SOURCES

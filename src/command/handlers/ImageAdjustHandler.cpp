@@ -29,6 +29,8 @@ CommandResult ImageAdjustHandler::execute(nlohmann::json params) {
   if (params.contains("saturation"))  { settings.saturation  = params["saturation"].get<float>(); }
 
   repo_.updateEditSettings(id, settings.toJson());
+  repo_.updateThumb(id, "", 0, 0, 0);
+  if (adjustedCb_) { adjustedCb_(id); }
   return success();
 }
 

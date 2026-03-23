@@ -152,3 +152,83 @@ TEST_CASE("image.revert: returns failure for unknown photo id", "[revert]") {
   const auto result = h.execute({{"id", 99999}});
   REQUIRE_FALSE(result.has_value());
 }
+
+// ── Cache-invalidation: ImageAdjustHandler ────────────────────────────────────
+
+TEST_CASE("image.adjust: clears thumb_path in DB on success", "[adjust]") {
+  TempDb f;
+  const int64_t pid = f.insertPhoto();
+  f.repo->updateThumb(pid, "/thumbs/old.jpg", 256, 256, 0);
+  REQUIRE(f.repo->findById(pid)->thumbPath == "/thumbs/old.jpg");
+
+  command::ImageAdjustHandler h(*f.repo);
+  REQUIRE(h.execute({{"id", pid}, {"exposure", 0.5}}).has_value());
+
+  REQUIRE(f.repo->findById(pid)->thumbPath.empty());
+}
+
+TEST_CASE("image.adjust: fires adjustedCb on success", "[adjust]") {
+  TempDb f;
+  const int64_t pid = f.insertPhoto();
+
+  int callCount = 0;
+  int64_t calledWith = -1;
+  command::ImageAdjustHandler h(*f.repo, [&](const int64_t id) {
+    ++callCount;
+    calledWith = id;
+  });
+
+  REQUIRE(h.execute({{"id", pid}, {"exposure", 1.0}}).has_value());
+  REQUIRE(callCount == 1);
+  REQUIRE(calledWith == pid);
+}
+
+TEST_CASE("image.adjust: does not fire adjustedCb on unknown photo", "[adjust]") {
+  TempDb f;
+
+  int callCount = 0;
+  command::ImageAdjustHandler h(*f.repo, [&](int64_t) { ++callCount; });
+
+  REQUIRE_FALSE(h.execute({{"id", 99999}, {"exposure", 1.0}}).has_value());
+  REQUIRE(callCount == 0);
+}
+
+// ── Cache-invalidation: ImageRevertHandler ────────────────────────────────────
+
+TEST_CASE("image.revert: clears thumb_path in DB on success", "[revert]") {
+  TempDb f;
+  const int64_t pid = f.insertPhoto();
+  f.repo->updateThumb(pid, "/thumbs/old.jpg", 256, 256, 0);
+  REQUIRE(f.repo->findById(pid)->thumbPath == "/thumbs/old.jpg");
+
+  command::ImageRevertHandler h(*f.repo);
+  REQUIRE(h.execute({{"id", pid}}).has_value());
+
+  REQUIRE(f.repo->findById(pid)->thumbPath.empty());
+}
+
+TEST_CASE("image.revert: fires adjustedCb on success", "[revert]") {
+  TempDb f;
+  const int64_t pid = f.insertPhoto();
+
+  int callCount = 0;
+  int64_t calledWith = -1;
+  command::ImageRevertHandler h(*f.repo, [&](const int64_t id) {
+    ++callCount;
+    calledWith = id;
+  });
+
+  REQUIRE(h.execute({{"id", pid}}).has_value());
+  REQUIRE(callCount == 1);
+  REQUIRE(calledWith == pid);
+}
+
+TEST_CASE("image.revert: does not fire adjustedCb on unknown photo", "[revert]") {
+  TempDb f;
+
+  int callCount = 0;
+  command::ImageRevertHandler h(*f.repo, [&](int64_t) { ++callCount; });
+
+  REQUIRE_FALSE(h.execute({{"id", 99999}}).has_value());
+  REQUIRE(callCount == 0);
+}
