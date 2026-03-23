@@ -110,10 +110,13 @@ add_test(NAME test_raw_decoder COMMAND test_raw_decoder)
 # ── test_command ───────────────────────────────────────────────────────────────
 set(COMMAND_SOURCES_TEST
     ${CMAKE_SOURCE_DIR}/src/command/CommandRegistry.cpp
+    ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageAdjustHandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageRevertHandler.cpp
 )
 
 add_executable(test_command
     test_command_registry.cpp
+    test_command_image.cpp
     ${COMMAND_SOURCES_TEST}
     ${CATALOG_SOURCES}
     ${UTIL_SOURCES_PLAIN}
