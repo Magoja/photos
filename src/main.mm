@@ -42,6 +42,7 @@
 // Command system
 #include "command/CommandRegistry.h"
 #include "command/AppCommands.h"
+#include "export/ExportSession.h"
 
 // Util
 #include "util/Platform.h"
@@ -238,8 +239,6 @@ static void wireUiCallbacks(RenderCtx& ctx) {
 
   ctx.metaSyncDlg.setDoneCallback([&]() { ctx.grid.reload(); });
   ctx.metaSyncDlg.setRegistry(&ctx.registry);
-
-  ctx.exportDlg.setRegistry(&ctx.registry);
 
   // NOTE: set a deferred flag rather than calling evictAll() immediately.
   // The Settings panel renders after the grid has already added texture pointers
@@ -574,7 +573,8 @@ int main(int /*argc*/, char** /*argv*/) {
   ui::FullscreenView fullscreen(repo, texMgr);
   ui::EditView editView(repo, thumbCache, texMgr, (MTLDevicePtr)device);
   ui::ImportDialog importDlg(db);
-  ui::ExportDialog exportDlg(repo);
+  export_ns::ExportSession exportSession(repo);
+  ui::ExportDialog exportDlg(repo, exportSession);
   ui::MetaSyncDialog metaSyncDlg(repo, texMgr);
   ui::SettingsPanel settingsPanel(repo, dbPath);
 
@@ -585,7 +585,7 @@ int main(int /*argc*/, char** /*argv*/) {
 
   // ── Command registry ──────────────────────────────────────────────────────
   const command::CommandRegistry registry =
-      command::buildRegistry(repo, texMgr, grid, exportDlg);
+      command::buildRegistry(repo, texMgr, grid, exportSession);
 
   // ── Wire everything up ────────────────────────────────────────────────────
   bool running = true;

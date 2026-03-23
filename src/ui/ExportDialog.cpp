@@ -1,6 +1,4 @@
 #include "ExportDialog.h"
-#include "command/CommandRegistry.h"
-#include "command/handlers/ExportHandler.h"
 #include "imgui.h"
 #include <spdlog/spdlog.h>
 #include <filesystem>
@@ -9,15 +7,15 @@ namespace fs = std::filesystem;
 
 namespace ui {
 
-ExportDialog::ExportDialog(catalog::PhotoRepository& repo) : repo_(repo) {}
+ExportDialog::ExportDialog(catalog::PhotoRepository& repo, export_ns::ExportSession& session)
+    : repo_(repo), session_(session) {}
 
 void ExportDialog::open(int64_t primaryId, std::vector<int64_t> ids) {
   primaryId_   = primaryId;
   selectedIds_ = std::move(ids);
   open_        = true;
 
-  // Reset handler state for a fresh export session.
-  if (handler_) { handler_->reset(); }
+  session_.reset();
 
   // Load persisted folder from DB on first open, then fall back to Desktop
   if (targetPath_.empty()) {
@@ -29,21 +27,12 @@ void ExportDialog::open(int64_t primaryId, std::vector<int64_t> ids) {
 }
 
 void ExportDialog::close() {
-  if (handler_) { handler_->cancel(); }
+  session_.cancel();
   open_ = false;
 }
 
 void ExportDialog::startExport() {
-  if (!handler_ || !registry_) { return; }
-
-  nlohmann::json ids = nlohmann::json::array();
-  for (const int64_t id : selectedIds_) { ids.push_back(id); }
-
-  registry_->dispatch("export.photos", {
-      {"ids",        ids},
-      {"targetPath", targetPath_},
-      {"quality",    90}
-  });
+  session_.start(selectedIds_, targetPath_, 90);
 }
 
 void ExportDialog::render() {
@@ -51,8 +40,8 @@ void ExportDialog::render() {
     return;
   }
 
-  const bool exporting = handler_ && handler_->isRunning();
-  const bool finished  = handler_ && handler_->isFinished();
+  const bool exporting = session_.isRunning();
+  const bool finished  = session_.isFinished();
 
   ImGui::SetNextWindowSize({480, 240}, ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver,
@@ -108,18 +97,18 @@ void ExportDialog::render() {
     }
 
   } else if (exporting) {
-    const int done  = handler_->doneCount();
-    const int total = handler_->totalCount();
+    const int done  = session_.doneCount();
+    const int total = session_.totalCount();
     const float prog = total > 0 ? static_cast<float>(done) / total : 0.f;
     ImGui::ProgressBar(prog, {-1, 0});
     ImGui::Text("%d / %d", done, total);
     if (ImGui::Button("Cancel##exp")) {
-      handler_->cancel();
+      session_.cancel();
     }
 
   } else {
     ImGui::TextColored({0.2f, 1.f, 0.2f, 1.f}, "Export complete! %d exported, %d errors",
-                       handler_->exportedCount(), handler_->errorCount());
+                       session_.exportedCount(), session_.errorCount());
     ImGui::Text("Files saved to: %s", targetPath_.c_str());
     if (ImGui::Button("Close")) {
       close();

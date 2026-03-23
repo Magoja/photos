@@ -9,9 +9,9 @@
 #include "command/handlers/CatalogOpenHandler.h"
 #include "command/handlers/MetaSyncHandler.h"
 #include "command/handlers/ExportHandler.h"
+#include "export/ExportSession.h"
 #include "ui/TextureManager.h"
 #include "ui/GridView.h"
-#include "ui/ExportDialog.h"
 
 #include <memory>
 
@@ -20,7 +20,7 @@ namespace command {
 CommandRegistry buildRegistry(catalog::PhotoRepository& repo,
                                ui::TextureManager&       texMgr,
                                ui::GridView&             grid,
-                               ui::ExportDialog&         exportDlg) {
+                               export_ns::ExportSession& session) {
   CommandRegistry registry;
 
   // image.* — image.save's savedCb is null; EditView::pollSaveCompletion fires
@@ -49,10 +49,9 @@ CommandRegistry buildRegistry(catalog::PhotoRepository& repo,
   registry.registerHandler("metasync.apply",
       std::make_unique<MetaSyncHandler>(repo, nullptr));
 
-  // export — keep raw pointer for ExportDialog delegation before transferring ownership
-  auto exportHandlerOwned = std::make_unique<ExportHandler>(repo, nullptr, nullptr);
-  exportDlg.setHandler(exportHandlerOwned.get());
-  registry.registerHandler("export.photos", std::move(exportHandlerOwned));
+  // export
+  registry.registerHandler("export.photos",
+      std::make_unique<ExportHandler>(session));
 
   return registry;
 }

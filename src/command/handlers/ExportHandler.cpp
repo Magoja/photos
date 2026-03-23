@@ -13,7 +13,7 @@ ValidationResult ExportHandler::validate(const nlohmann::json& params) const {
 }
 
 CommandResult ExportHandler::execute(nlohmann::json params) {
-  if (isRunning()) {
+  if (session_.isRunning()) {
     return failure("export already in progress");
   }
 
@@ -26,41 +26,8 @@ CommandResult ExportHandler::execute(nlohmann::json params) {
     ids.push_back(idJson.get<int64_t>());
   }
 
-  export_ns::ExportPreset preset;
-  preset.name       = "Export";
-  preset.quality    = quality;
-  preset.targetPath = targetPath;
-
-  finished_      = false;
-  doneCount_     = 0;
-  totalCount_    = static_cast<int>(ids.size());
-  exportedCount_ = 0;
-  errorCount_    = 0;
-
-  exporter_ = std::make_unique<export_ns::Exporter>(repo_, preset);
-  exporter_->setProgressCallback([this](const int done, const int total) {
-    doneCount_  = done;
-    totalCount_ = total;
-    if (progressCb_) { progressCb_(done, total); }
-  });
-  exporter_->setDoneCallback([this](const int exp, const int err) {
-    exportedCount_ = exp;
-    errorCount_    = err;
-    finished_      = true;
-    if (doneCb_) { doneCb_(exp, err); }
-  });
-  exporter_->start(ids);
+  session_.start(std::move(ids), targetPath, quality);
   return success();
-}
-
-void ExportHandler::reset() {
-  cancel();
-  exporter_.reset();
-  finished_      = false;
-  doneCount_     = 0;
-  totalCount_    = 0;
-  exportedCount_ = 0;
-  errorCount_    = 0;
 }
 
 }  // namespace command

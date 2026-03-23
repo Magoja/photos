@@ -97,6 +97,7 @@ set(UI_SOURCES
 
 set(EXPORT_SOURCES
     src/export/Exporter.cpp
+    src/export/ExportSession.cpp
 )
 
 set(COMMAND_SOURCES
