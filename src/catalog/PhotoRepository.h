@@ -64,32 +64,32 @@ class PhotoRepository {
 
   // ── Volumes ──────────────────────────────────────────────────────────────
   int64_t upsertVolume(const VolumeRecord& v);
-  std::optional<VolumeRecord> findVolume(const std::string& uuid);
-  std::vector<VolumeRecord> listVolumes();
+  std::optional<VolumeRecord> findVolume(const std::string& uuid) const;
+  std::vector<VolumeRecord> listVolumes() const;
 
   // ── Folders ──────────────────────────────────────────────────────────────
   int64_t upsertFolder(const FolderRecord& f);
-  std::optional<FolderRecord> findFolder(const std::string& path);
-  std::vector<FolderRecord> listFolders(int64_t volumeId = 0);
-  int64_t folderPhotoCount(int64_t folderId);
-  std::map<int64_t, int64_t> allFolderPhotoCounts();
+  std::optional<FolderRecord> findFolder(const std::string& path) const;
+  std::vector<FolderRecord> listFolders(int64_t volumeId = 0) const;
+  int64_t folderPhotoCount(int64_t folderId) const;
+  std::map<int64_t, int64_t> allFolderPhotoCounts() const;
 
   // ── Photos ───────────────────────────────────────────────────────────────
   // Returns new photo id; throws DbError on UNIQUE(folder_id,filename) conflict
   int64_t insertPhoto(const PhotoRecord& p);
 
-  std::optional<PhotoRecord> findById(int64_t id);
-  std::optional<int64_t> findByHash(const std::string& hash);
-  std::string getThumbPath(int64_t photoId);
-  std::string getThumbMicroPath(int64_t photoId);
+  std::optional<PhotoRecord> findById(int64_t id) const;
+  std::optional<int64_t> findByHash(const std::string& hash) const;
+  std::string getThumbPath(int64_t photoId) const;
+  std::string getThumbMicroPath(int64_t photoId) const;
 
-  std::vector<int64_t> queryByFolder(int64_t folderId, bool pickedOnly = false);
-  std::vector<int64_t> queryAll(bool pickedOnly = false);
+  std::vector<int64_t> queryByFolder(int64_t folderId, bool pickedOnly = false) const;
+  std::vector<int64_t> queryAll(bool pickedOnly = false) const;
 
   // Returns {id → {thumbPath, editSettings}} for all photos in a folder.
   // folderId == 0 means all photos. Single SQL query; called once per reload().
   std::unordered_map<int64_t, std::pair<std::string, std::string>>
-    queryThumbMeta(int64_t folderId, bool pickedOnly);
+    queryThumbMeta(int64_t folderId, bool pickedOnly) const;
 
   void updatePicked(int64_t id, int picked);
   void updateThumb(int64_t id, const std::string& path, int w, int h, int64_t mtime);
@@ -101,22 +101,23 @@ class PhotoRepository {
   void clearAllThumbs();
 
   // ── App settings ─────────────────────────────────────────────────────────
-  std::string getSetting(const std::string& key, const std::string& def = "");
+  std::string getSetting(const std::string& key, const std::string& def = "") const;
   void setSetting(const std::string& key, const std::string& value);
 
   // ── Library root ─────────────────────────────────────────────────────────
   void setLibraryRoot(const std::string& root);
   std::string libraryRoot() const { return libraryRoot_; }
-  std::string fullPathFor(int64_t folderId, const std::string& filename);
+  std::string fullPathFor(int64_t folderId, const std::string& filename) const;
   bool libraryRootExists() const;
 
   // ── Direct DB access (for components that need raw queries) ───────────────
   Database& db() { return db_; }
+  const Database& db() const { return db_; }
 
  private:
   Database& db_;
   std::string libraryRoot_;
-  PhotoRecord rowToPhoto(Stmt& s);
+  PhotoRecord rowToPhoto(Stmt& s) const;
 };
 
 }  // namespace catalog

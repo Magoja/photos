@@ -37,7 +37,7 @@ static std::vector<int64_t> collectIds(Stmt& s) {
 
 // ── PhotoRepository ───────────────────────────────────────────────────────────
 
-PhotoRecord PhotoRepository::rowToPhoto(Stmt& s) {
+PhotoRecord PhotoRepository::rowToPhoto(Stmt& s) const {
   PhotoRecord p;
   int c = 0;
   p.id = s.getInt64(c++);
@@ -94,7 +94,7 @@ int64_t PhotoRepository::upsertVolume(const VolumeRecord& v) {
   return 0;
 }
 
-std::vector<VolumeRecord> PhotoRepository::listVolumes() {
+std::vector<VolumeRecord> PhotoRepository::listVolumes() const {
   auto s = db_.prepare("SELECT id,uuid,label,mount_path,last_seen FROM volumes ORDER BY label");
   std::vector<VolumeRecord> out;
   while (s.step()) {
@@ -103,7 +103,7 @@ std::vector<VolumeRecord> PhotoRepository::listVolumes() {
   return out;
 }
 
-std::optional<VolumeRecord> PhotoRepository::findVolume(const std::string& uuid) {
+std::optional<VolumeRecord> PhotoRepository::findVolume(const std::string& uuid) const {
   auto s = db_.prepare("SELECT id,uuid,label,mount_path,last_seen FROM volumes WHERE uuid=?");
   s.bind(1, uuid);
   if (!s.step()) {
@@ -146,7 +146,7 @@ int64_t PhotoRepository::upsertFolder(const FolderRecord& f) {
   return 0;
 }
 
-std::optional<FolderRecord> PhotoRepository::findFolder(const std::string& path) {
+std::optional<FolderRecord> PhotoRepository::findFolder(const std::string& path) const {
   auto s = db_.prepare(std::string(kFolderSelect) + " WHERE path=?");
   s.bind(1, path);
   if (!s.step()) {
@@ -155,7 +155,7 @@ std::optional<FolderRecord> PhotoRepository::findFolder(const std::string& path)
   return rowToFolder(s);
 }
 
-std::vector<FolderRecord> PhotoRepository::listFolders(int64_t volumeId) {
+std::vector<FolderRecord> PhotoRepository::listFolders(int64_t volumeId) const {
   Stmt s = volumeId ? db_.prepare(std::string(kFolderSelect) + " WHERE volume_id=? ORDER BY path")
                     : db_.prepare(std::string(kFolderSelect) + " ORDER BY path");
   if (volumeId) {
@@ -168,7 +168,7 @@ std::vector<FolderRecord> PhotoRepository::listFolders(int64_t volumeId) {
   return out;
 }
 
-int64_t PhotoRepository::folderPhotoCount(int64_t folderId) {
+int64_t PhotoRepository::folderPhotoCount(int64_t folderId) const {
   auto s = db_.prepare("SELECT COUNT(*) FROM photos WHERE folder_id=?");
   s.bind(1, folderId);
   if (s.step()) {
@@ -177,7 +177,7 @@ int64_t PhotoRepository::folderPhotoCount(int64_t folderId) {
   return 0;
 }
 
-std::map<int64_t, int64_t> PhotoRepository::allFolderPhotoCounts() {
+std::map<int64_t, int64_t> PhotoRepository::allFolderPhotoCounts() const {
   auto s = db_.prepare("SELECT folder_id, COUNT(*) FROM photos GROUP BY folder_id");
   std::map<int64_t, int64_t> out;
   while (s.step()) {
@@ -260,7 +260,7 @@ int64_t PhotoRepository::insertPhoto(const PhotoRecord& p) {
   return db_.lastInsertRowid();
 }
 
-std::optional<PhotoRecord> PhotoRepository::findById(int64_t id) {
+std::optional<PhotoRecord> PhotoRepository::findById(int64_t id) const {
   auto s = db_.prepare(
     "SELECT id,folder_id,filename,COALESCE(file_hash,''),file_size,import_time,"
     "COALESCE(capture_time,''),COALESCE(camera_make,''),COALESCE(camera_model,''),"
@@ -278,7 +278,7 @@ std::optional<PhotoRecord> PhotoRepository::findById(int64_t id) {
   return rowToPhoto(s);
 }
 
-std::string PhotoRepository::getThumbPath(int64_t photoId) {
+std::string PhotoRepository::getThumbPath(int64_t photoId) const {
   auto s = db_.prepare("SELECT COALESCE(thumb_path,'') FROM photos WHERE id=?");
   s.bind(1, photoId);
   if (s.step()) {
@@ -287,7 +287,7 @@ std::string PhotoRepository::getThumbPath(int64_t photoId) {
   return "";
 }
 
-std::string PhotoRepository::getThumbMicroPath(int64_t photoId) {
+std::string PhotoRepository::getThumbMicroPath(int64_t photoId) const {
   auto s = db_.prepare("SELECT COALESCE(thumb_micro_path,'') FROM photos WHERE id=?");
   s.bind(1, photoId);
   if (s.step()) {
@@ -296,7 +296,7 @@ std::string PhotoRepository::getThumbMicroPath(int64_t photoId) {
   return "";
 }
 
-std::optional<int64_t> PhotoRepository::findByHash(const std::string& hash) {
+std::optional<int64_t> PhotoRepository::findByHash(const std::string& hash) const {
   auto s = db_.prepare("SELECT id FROM photos WHERE file_hash=? LIMIT 1");
   s.bind(1, hash);
   if (s.step()) {
@@ -305,7 +305,7 @@ std::optional<int64_t> PhotoRepository::findByHash(const std::string& hash) {
   return std::nullopt;
 }
 
-std::vector<int64_t> PhotoRepository::queryByFolder(int64_t folderId, bool pickedOnly) {
+std::vector<int64_t> PhotoRepository::queryByFolder(int64_t folderId, bool pickedOnly) const {
   Stmt s =
     pickedOnly
       ? db_.prepare(
@@ -317,7 +317,7 @@ std::vector<int64_t> PhotoRepository::queryByFolder(int64_t folderId, bool picke
   return collectIds(s);
 }
 
-std::vector<int64_t> PhotoRepository::queryAll(bool pickedOnly) {
+std::vector<int64_t> PhotoRepository::queryAll(bool pickedOnly) const {
   Stmt s = pickedOnly
              ? db_.prepare(
                  "SELECT id FROM photos WHERE picked=1 ORDER BY COALESCE(capture_time,import_time)")
@@ -326,7 +326,7 @@ std::vector<int64_t> PhotoRepository::queryAll(bool pickedOnly) {
 }
 
 std::unordered_map<int64_t, std::pair<std::string, std::string>>
-PhotoRepository::queryThumbMeta(int64_t folderId, bool pickedOnly) {
+PhotoRepository::queryThumbMeta(int64_t folderId, bool pickedOnly) const {
   static const std::string kSelect =
     "SELECT id, COALESCE(thumb_path,''), COALESCE(edit_settings,'{}') FROM photos";
   static const std::string kOrderBy = " ORDER BY COALESCE(capture_time,import_time)";
@@ -407,7 +407,7 @@ void PhotoRepository::clearAllThumbs() {
 
 // ── App settings ──────────────────────────────────────────────────────────────
 
-std::string PhotoRepository::getSetting(const std::string& key, const std::string& def) {
+std::string PhotoRepository::getSetting(const std::string& key, const std::string& def) const {
   auto s = db_.prepare("SELECT value FROM app_settings WHERE key=?");
   s.bind(1, key);
   if (s.step()) {
@@ -431,7 +431,7 @@ void PhotoRepository::setLibraryRoot(const std::string& root) {
   libraryRoot_ = root;
 }
 
-std::string PhotoRepository::fullPathFor(int64_t folderId, const std::string& filename) {
+std::string PhotoRepository::fullPathFor(int64_t folderId, const std::string& filename) const {
   auto s = db_.prepare("SELECT path FROM folders WHERE id=?");
   s.bind(1, folderId);
   std::string folderRel;
