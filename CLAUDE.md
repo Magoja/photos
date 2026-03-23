@@ -99,7 +99,7 @@ ctest --preset debug --output-on-failure  # run tests
 
   ✓ Verify: `ctest --preset debug -R test_command` passes.
 
-- [ ] **Task C3 — `image.crop` and `image.save` handlers**
+- [x] **Task C3 — `image.crop` and `image.save` handlers**
   Files: `src/command/handlers/ImageCropHandler.h/.cpp`,
   `src/command/handlers/ImageSaveHandler.h/.cpp`, extend `tests/test_command_image.cpp`
 
