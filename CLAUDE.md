@@ -16,7 +16,7 @@ When fixing a crash or bug: implement the fix, build, run unit tests, and explai
 - xxhash XXH3 (dedup fingerprinting)
 - nlohmann/json (app config + `edit_settings` column)
 - spdlog (logging to `~/Library/Logs/PhotoLibrary/`)
-- CMake 3.25 + CMakePresets.json (`debug` / `release`, arm64)
+- CMake 3.25 + CMakePresets.json (`debug` / `release`, arm64); **C++23**
 - Catch2 v3 (unit tests)
 - All Homebrew dependencies; ImGui as git submodule only
 
@@ -53,6 +53,8 @@ ctest --preset debug --output-on-failure  # run tests
 - **Indentation**: 2 spaces (no tabs). Enforced by `.clang-format` at project root.
 - **Braces**: always use curly braces for `if`/`else`/`for`/`while` bodies, even single-line. Enforced by `.clang-format`.
 - **Data-conversion helpers**: any inline block that converts data from one representation to another (e.g. RGB→RGBA, pixels→MTLTexture, JSON→struct) must be extracted into a named free function. Name it `aToB` or `aFromB`. Place it in the nearest anonymous namespace. Never leave a multi-line conversion loop or construction sequence inline inside a larger function.
+- **Designated initializers**: always use C++20 designated initializer syntax (`.field = value`) when constructing structs by aggregate initialization. Never rely on positional order.
+- **`std::expected` for fallible results**: use `std::expected<T, std::string>` (C++23) instead of a `{bool ok, string error}` struct for any function that can fail. Return values via the type directly; signal errors with `std::unexpected(msg)`. Provide thin `success()`/`failure()` free-function helpers in the same namespace when the call sites benefit from the symmetry.
 
 ## Dependency graph
 ```
