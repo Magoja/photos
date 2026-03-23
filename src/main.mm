@@ -39,6 +39,17 @@
 #include "ui/MetaSyncDialog.h"
 #include "ui/SettingsPanel.h"
 
+// Command system
+#include "command/CommandRegistry.h"
+#include "command/handlers/ImageAdjustHandler.h"
+#include "command/handlers/ImageRevertHandler.h"
+#include "command/handlers/ImageCropHandler.h"
+#include "command/handlers/ImageSaveHandler.h"
+#include "command/handlers/CatalogPickHandler.h"
+#include "command/handlers/CatalogOpenHandler.h"
+#include "command/handlers/MetaSyncHandler.h"
+#include "command/handlers/ExportHandler.h"
+
 // Util
 #include "util/Platform.h"
 #include "util/ThreadPool.h"
@@ -99,6 +110,7 @@ struct RenderCtx {
   ui::SettingsPanel& settingsPanel;
   std::mutex& thumbMtx;
   std::queue<ThumbResult>& thumbResQ;
+  command::CommandRegistry& registry;
   // Deferred clear-cache: set by Settings button, executed at the start of the
   // next frame before any draw calls to avoid freeing textures mid-frame.
   bool clearCachePending = false;
@@ -212,6 +224,7 @@ static void wireUiCallbacks(RenderCtx& ctx) {
     ctx.grid.loadFolder(fid, ctx.filterBar.mode());
   });
 
+  // catalog.pick callback: reload grid after pick state changes.
   ctx.fullscreen.setPickChangedCallback(
     [&](int64_t /*pid*/, int /*picked*/) { ctx.grid.reload(); });
 
@@ -220,8 +233,10 @@ static void wireUiCallbacks(RenderCtx& ctx) {
       ctx.editView.open(photoId);
     }
   });
+  ctx.fullscreen.setRegistry(&ctx.registry);
 
   ctx.editView.setSavedCallback([&](int64_t /*photoId*/) { ctx.grid.reload(); });
+  ctx.editView.setRegistry(&ctx.registry);
 
   ctx.importDlg.setDoneCallback([&]() {
     ctx.folderPanel.refresh();
@@ -229,6 +244,9 @@ static void wireUiCallbacks(RenderCtx& ctx) {
   });
 
   ctx.metaSyncDlg.setDoneCallback([&]() { ctx.grid.reload(); });
+  ctx.metaSyncDlg.setRegistry(&ctx.registry);
+
+  ctx.exportDlg.setRegistry(&ctx.registry);
 
   // NOTE: set a deferred flag rather than calling evictAll() immediately.
   // The Settings panel renders after the grid has already added texture pointers
@@ -572,12 +590,45 @@ int main(int /*argc*/, char** /*argv*/) {
   std::queue<ThumbResult> thumbResQ;
   util::ThreadPool thumbPool(2);
 
+  // ── Command registry ──────────────────────────────────────────────────────
+  command::CommandRegistry registry;
+
+  // image.* handlers (image.save's savedCb is null; EditView's pollSaveCompletion
+  // fires the grid reload after thumbnail regen completes, not immediately on save).
+  registry.registerHandler("image.adjust",
+      std::make_unique<command::ImageAdjustHandler>(repo,
+          [&](int64_t id) { texMgr.evict(id); texMgr.evict(id + ui::GridView::kMicroOffset); }));
+  registry.registerHandler("image.revert",
+      std::make_unique<command::ImageRevertHandler>(repo,
+          [&](int64_t id) { texMgr.evict(id); texMgr.evict(id + ui::GridView::kMicroOffset); }));
+  registry.registerHandler("image.crop",
+      std::make_unique<command::ImageCropHandler>(repo));
+  registry.registerHandler("image.save",
+      std::make_unique<command::ImageSaveHandler>(repo, nullptr));
+
+  // catalog.* handlers
+  registry.registerHandler("catalog.pick",
+      std::make_unique<command::CatalogPickHandler>(repo,
+          [&](int64_t /*id*/, int /*picked*/) { grid.reload(); }));
+  registry.registerHandler("catalog.photo.open",
+      std::make_unique<command::CatalogOpenHandler>(nullptr));
+
+  // metasync handler (doneCb is null; MetaSyncDialog fires its own doneCb from render())
+  registry.registerHandler("metasync.apply",
+      std::make_unique<command::MetaSyncHandler>(repo, nullptr));
+
+  // export handler — keep raw pointer for ExportDialog delegation
+  auto exportHandlerOwned = std::make_unique<command::ExportHandler>(repo, nullptr, nullptr);
+  command::ExportHandler* exportHandlerPtr = exportHandlerOwned.get();
+  registry.registerHandler("export.photos", std::move(exportHandlerOwned));
+  exportDlg.setHandler(exportHandlerPtr);
+
   // ── Wire everything up ────────────────────────────────────────────────────
   bool running = true;
   RenderCtx ctx{running, libraryRoot, thumbDir, db, repo, thumbCache, texMgr,
                 grid, folderPanel, filterBar, fullscreen, editView,
                 importDlg, exportDlg, metaSyncDlg, settingsPanel,
-                thumbMtx, thumbResQ};
+                thumbMtx, thumbResQ, registry};
 
   folderPanel.refresh();
   grid.loadFolder(0, ui::FilterMode::All);

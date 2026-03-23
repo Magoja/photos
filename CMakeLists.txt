@@ -43,6 +43,14 @@ set_source_files_properties(
     PROPERTIES COMPILE_OPTIONS "-Wno-arc-bridge-casts-disallowed-in-nonarc"
 )
 
+# main.mm and EditView.mm include command/ headers that use std::expected (C++23).
+# Only these two .mm files need C++23; the rest compile fine under C++20.
+set_source_files_properties(
+    src/main.mm
+    src/ui/EditView.mm
+    PROPERTIES COMPILE_OPTIONS "-std=gnu++23"
+)
+
 set(IMGUI_SOURCES
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_draw.cpp

@@ -76,7 +76,7 @@ ctest --preset debug --output-on-failure  # run tests
 
 ## Tasks
 
-- [ ] **Task C1 — Command system foundation**
+- [x] **Task C1 — Command system foundation**
   Files: `src/command/CommandResult.h`, `src/command/ICommandHandler.h`,
   `src/command/CommandRegistry.h/.cpp`, `tests/test_command_registry.cpp`,
   update `CMakeLists.txt` (root + tests/)
@@ -89,7 +89,7 @@ ctest --preset debug --output-on-failure  # run tests
 
   ✓ Verify: `ctest --preset debug -R test_command` passes.
 
-- [ ] **Task C2 — `image.adjust` and `image.revert` handlers**
+- [x] **Task C2 — `image.adjust` and `image.revert` handlers**
   Files: `src/command/handlers/ImageAdjustHandler.h/.cpp`,
   `src/command/handlers/ImageRevertHandler.h/.cpp`, `tests/test_command_image.cpp`
 
@@ -109,7 +109,7 @@ ctest --preset debug --output-on-failure  # run tests
 
   ✓ Verify: `ctest --preset debug -R test_command` passes.
 
-- [ ] **Task C4 — `catalog.pick` and `catalog.photo.open` handlers**
+- [x] **Task C4 — `catalog.pick` and `catalog.photo.open` handlers**
   Files: `src/command/handlers/CatalogPickHandler.h/.cpp`,
   `src/command/handlers/CatalogOpenHandler.h/.cpp`, `tests/test_command_catalog.cpp`
 
@@ -119,7 +119,7 @@ ctest --preset debug --output-on-failure  # run tests
 
   ✓ Verify: `ctest --preset debug -R test_command` passes.
 
-- [ ] **Task C5 — `metasync.apply` handler**
+- [x] **Task C5 — `metasync.apply` handler**
   Files: `src/command/handlers/MetaSyncHandler.h/.cpp`, `tests/test_command_metasync.cpp`
 
   - `MetaSyncHandler(PhotoRepository&, std::function<void()> doneCb)`
@@ -130,7 +130,7 @@ ctest --preset debug --output-on-failure  # run tests
 
   ✓ Verify: `ctest --preset debug -R test_command` passes.
 
-- [ ] **Task C6 — `export.photos` handler**
+- [x] **Task C6 — `export.photos` handler**
   Files: `src/command/handlers/ExportHandler.h/.cpp`
 
   - `ExportHandler(PhotoRepository&, ProgressCb, DoneCb)`: owns `std::unique_ptr<Exporter>`
@@ -141,7 +141,7 @@ ctest --preset debug --output-on-failure  # run tests
 
   ✓ Verify: build succeeds; manual export in app produces JPEG files with correct EXIF.
 
-- [ ] **Task C7 — Wire registry into main.mm + replace direct calls**
+- [x] **Task C7 — Wire registry into main.mm + replace direct calls**
   Files: `src/main.mm`, `src/ui/EditView.mm`, `src/ui/ExportDialog.cpp`,
   `src/ui/MetaSyncDialog.cpp`, `src/ui/FullscreenView.cpp`
 

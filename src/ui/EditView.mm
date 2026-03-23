@@ -2,6 +2,7 @@
 #import <Metal/Metal.h>
 
 #include "EditView.h"
+#include "command/CommandRegistry.h"
 #include "util/PixelPipeline.h"
 #include "import/RawDecoder.h"
 #include "util/Platform.h"
@@ -668,11 +669,8 @@ void EditView::regenThumbnail(int64_t photoId,
                               catalog::EditSettings s,
                               std::vector<uint8_t> srcRgb,
                               int srcW, int srcH) {
-  // Always persist settings first — independent of whether thumbnail regen succeeds.
-  {
-    std::lock_guard lk(repo_.db().mutex());
-    repo_.updateEditSettings(photoId, s.toJson());
-  }
+  // Settings are persisted on the main thread via registry.dispatch("image.save")
+  // in startSave() before this thread is launched.  Only thumbnail regen remains.
 
   if (srcRgb.empty()) {
     saveDone_ = true;
@@ -750,6 +748,19 @@ void EditView::startSave() {
   if (originalRgb_.empty()) {
     return;
   }
+
+  // Persist settings to DB and log the action via the command registry.
+  // This runs on the main thread before the thumbnail-regen background thread starts,
+  // so regenThumbnail() only needs to write the final thumb_path (not edit_settings).
+  if (registry_) {
+    const auto settingsJson = nlohmann::json::parse(settings_.toJson());
+    registry_->dispatch("image.save", {{"id", photoId_}, {"settings", settingsJson}});
+  } else {
+    std::lock_guard lk(repo_.db().mutex());
+    repo_.updateEditSettings(photoId_, settings_.toJson());
+    repo_.updateThumb(photoId_, "", 0, 0, 0);
+  }
+
   saving_ = true;
   saveDone_ = false;
   // Pass copies of the already-decoded LibRaw pixels so regenThumbnail uses

@@ -2,6 +2,7 @@
 #include "ThumbCropUV.h"
 #include "catalog/EditSettings.h"
 #include "util/PixelPipeline.h"
+#include "command/CommandRegistry.h"
 #include <libraw/libraw.h>
 #include <spdlog/spdlog.h>
 #include <algorithm>
@@ -159,12 +160,17 @@ void FullscreenView::togglePickCurrentPhoto(const int64_t photoId) {
     return;
   }
   const int newPicked = rec->picked ? 0 : 1;
-  repo_.updatePicked(photoId, newPicked);
-  if (pickChangedCb_) {
-    pickChangedCb_(photoId, newPicked);
+
+  if (registry_) {
+    registry_->dispatch("catalog.pick",
+        {{"id", photoId}, {"picked", newPicked}});
+  } else {
+    repo_.updatePicked(photoId, newPicked);
+    if (pickChangedCb_) { pickChangedCb_(photoId, newPicked); }
   }
-  toastText_ = newPicked ? "Picked" : "Unpicked";
-  toastVisible_ = true;
+
+  toastText_     = newPicked ? "Picked" : "Unpicked";
+  toastVisible_  = true;
   toastTimeLeft_ = 1.2f;
 }
 

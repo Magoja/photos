@@ -1,11 +1,11 @@
 #pragma once
-#include "export/Exporter.h"
 #include "catalog/PhotoRepository.h"
 #include "util/Platform.h"
 #include <vector>
 #include <cstdint>
-#include <memory>
 #include <string>
+
+namespace command { class CommandRegistry; class ExportHandler; }
 
 namespace ui {
 
@@ -20,21 +20,19 @@ class ExportDialog {
 
   void render();
 
+  void setRegistry(command::CommandRegistry* reg)   { registry_ = reg; }
+  void setHandler(command::ExportHandler*    handler) { handler_  = handler; }
+
  private:
   catalog::PhotoRepository& repo_;
   bool open_ = false;
-  bool exporting_ = false;
-  bool finished_ = false;
 
   int64_t primaryId_ = 0;
   std::vector<int64_t> selectedIds_;
   std::string targetPath_;
-  int doneCount_ = 0;
-  int totalCount_ = 0;
-  int exportedCount_ = 0;
-  int errorCount_ = 0;
 
-  std::unique_ptr<export_ns::Exporter> exporter_;
+  command::CommandRegistry* registry_ = nullptr;
+  command::ExportHandler*   handler_  = nullptr;
 
   void startExport();
 };

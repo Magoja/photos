@@ -1,6 +1,7 @@
 #include "MetaSyncDialog.h"
 #include "ThumbEditApplier.h"
 #include "catalog/EditSettings.h"
+#include "command/CommandRegistry.h"
 #include "imgui.h"
 #include <spdlog/spdlog.h>
 
@@ -73,12 +74,23 @@ void MetaSyncDialog::performSync() {
     updates.push_back({id, merged.toJson(), merged, tgtRec->thumbPath});
   }
 
-  // Write phase: no reads inside the transaction
-  auto txn = repo_.db().transaction();
-  for (const auto& u : updates) {
-    repo_.updateEditSettings(u.id, u.json);
+  // Write phase: dispatch through registry for logging; fall back to direct writes.
+  if (registry_) {
+    nlohmann::json tids = nlohmann::json::array();
+    for (const int64_t id : targetIds_) { tids.push_back(id); }
+    registry_->dispatch("metasync.apply", {
+        {"primaryId",  primaryId_},
+        {"targetIds",  tids},
+        {"syncAdjust", syncAdjust_},
+        {"syncCrop",   syncCrop_}
+    });
+  } else {
+    auto txn = repo_.db().transaction();
+    for (const auto& u : updates) {
+      repo_.updateEditSettings(u.id, u.json);
+    }
+    txn.commit();
   }
-  txn.commit();
 
   // Compute edited thumbnails in memory; drain happens at the top of the next
   // frame in main.mm (before grid.render()) to avoid a mid-frame use-after-free.
