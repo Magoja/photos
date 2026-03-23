@@ -103,7 +103,7 @@ struct RenderCtx {
   ui::SettingsPanel& settingsPanel;
   std::mutex& thumbMtx;
   std::queue<ThumbResult>& thumbResQ;
-  command::CommandRegistry& registry;
+  const command::CommandRegistry& registry;
   // Deferred clear-cache: set by Settings button, executed at the start of the
   // next frame before any draw calls to avoid freeing textures mid-frame.
   bool clearCachePending = false;
@@ -584,7 +584,7 @@ int main(int /*argc*/, char** /*argv*/) {
   util::ThreadPool thumbPool(2);
 
   // ── Command registry ──────────────────────────────────────────────────────
-  command::CommandRegistry registry =
+  const command::CommandRegistry registry =
       command::buildRegistry(repo, texMgr, grid, exportDlg);
 
   // ── Wire everything up ────────────────────────────────────────────────────

@@ -37,7 +37,7 @@ class EditView {
   ~EditView();
 
   void setSavedCallback(SavedCb cb) { savedCb_ = std::move(cb); }
-  void setRegistry(command::CommandRegistry* reg) { registry_ = reg; }
+  void setRegistry(const command::CommandRegistry* reg) { registry_ = reg; }
 
   // Returns the photoId whose LRU texture should be evicted this frame, or 0 if none.
   // Must be called before any grid AddImage calls to avoid use-after-free.
@@ -102,7 +102,7 @@ class EditView {
 
   SavedCb savedCb_;
   int64_t pendingEvictId_ = 0;
-  command::CommandRegistry* registry_ = nullptr;
+  const command::CommandRegistry* registry_ = nullptr;
 
   // helpers
   void loadLibRawBackground(std::string srcPath);

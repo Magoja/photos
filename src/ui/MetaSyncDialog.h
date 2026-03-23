@@ -20,7 +20,7 @@ class MetaSyncDialog {
   MetaSyncDialog(catalog::PhotoRepository& repo, TextureManager& texMgr);
 
   void setDoneCallback(DoneCb cb) { doneCb_ = std::move(cb); }
-  void setRegistry(command::CommandRegistry* reg) { registry_ = reg; }
+  void setRegistry(const command::CommandRegistry* reg) { registry_ = reg; }
 
   // Open dialog: primaryId is the source photo; targetIds are all selected photos
   // (including primary — source settings propagate to all)
@@ -37,7 +37,7 @@ class MetaSyncDialog {
   catalog::PhotoRepository& repo_;
   TextureManager& texMgr_;
   DoneCb doneCb_;
-  command::CommandRegistry* registry_ = nullptr;
+  const command::CommandRegistry* registry_ = nullptr;
 
   bool open_ = false;
   int64_t primaryId_ = 0;

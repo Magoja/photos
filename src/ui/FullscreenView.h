@@ -23,7 +23,7 @@ class FullscreenView {
 
   void setPickChangedCallback(PickChangedCb cb) { pickChangedCb_ = std::move(cb); }
   void setOpenEditCallback(OpenEditCb cb)        { openEditCb_    = std::move(cb); }
-  void setRegistry(command::CommandRegistry* reg) { registry_ = reg; }
+  void setRegistry(const command::CommandRegistry* reg) { registry_ = reg; }
 
   // Set the list of photo IDs to navigate through
   void setPhotoList(std::vector<int64_t> ids, int64_t currentId);
@@ -43,7 +43,7 @@ class FullscreenView {
   TextureManager& texMgr_;
   PickChangedCb pickChangedCb_;
   OpenEditCb    openEditCb_;
-  command::CommandRegistry* registry_ = nullptr;
+  const command::CommandRegistry* registry_ = nullptr;
 
   std::vector<int64_t> photoIds_;
   // Offset added to photoId when storing the tone-adjusted texture in TextureManager.

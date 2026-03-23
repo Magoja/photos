@@ -20,7 +20,7 @@ class ExportDialog {
 
   void render();
 
-  void setRegistry(command::CommandRegistry* reg)   { registry_ = reg; }
+  void setRegistry(const command::CommandRegistry* reg) { registry_ = reg; }
   void setHandler(command::ExportHandler*    handler) { handler_  = handler; }
 
  private:
@@ -31,7 +31,7 @@ class ExportDialog {
   std::vector<int64_t> selectedIds_;
   std::string targetPath_;
 
-  command::CommandRegistry* registry_ = nullptr;
+  const command::CommandRegistry* registry_ = nullptr;
   command::ExportHandler*   handler_  = nullptr;
 
   void startExport();
