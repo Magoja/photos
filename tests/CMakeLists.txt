@@ -112,6 +112,8 @@ set(COMMAND_SOURCES_TEST
     ${CMAKE_SOURCE_DIR}/src/command/CommandRegistry.cpp
     ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageAdjustHandler.cpp
     ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageRevertHandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageCropHandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageSaveHandler.cpp
 )
 
 add_executable(test_command

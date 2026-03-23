@@ -2,6 +2,8 @@
 #include <catch2/catch_approx.hpp>
 #include "command/handlers/ImageAdjustHandler.h"
 #include "command/handlers/ImageRevertHandler.h"
+#include "command/handlers/ImageCropHandler.h"
+#include "command/handlers/ImageSaveHandler.h"
 #include "catalog/Database.h"
 #include "catalog/Schema.h"
 #include "catalog/PhotoRepository.h"
@@ -230,5 +232,111 @@ TEST_CASE("image.revert: does not fire adjustedCb on unknown photo", "[revert]")
   command::ImageRevertHandler h(*f.repo, [&](int64_t) { ++callCount; });
 
   REQUIRE_FALSE(h.execute({{"id", 99999}}).has_value());
+  REQUIRE(callCount == 0);
+}
+
+// ── ImageCropHandler ──────────────────────────────────────────────────────────
+
+TEST_CASE("image.crop: writes crop fields, leaves adjust fields untouched", "[crop]") {
+  TempDb f;
+  const std::string initial =
+    R"({"exposure":1.5,"temperature":30.0,"contrast":10.0,"saturation":-5.0})";
+  const int64_t pid = f.insertPhoto(initial);
+  command::ImageCropHandler h(*f.repo);
+
+  const auto result = h.execute({{"id", pid}, {"x", 0.1}, {"y", 0.2}, {"w", 0.8}, {"h", 0.7}});
+
+  REQUIRE(result.has_value());
+  const auto rec = f.repo->findById(pid);
+  const auto s = EditSettings::fromJson(rec->editSettings);
+  REQUIRE(s.crop.x == Catch::Approx(0.1f));
+  REQUIRE(s.crop.y == Catch::Approx(0.2f));
+  REQUIRE(s.crop.w == Catch::Approx(0.8f));
+  REQUIRE(s.crop.h == Catch::Approx(0.7f));
+  // Adjust fields must be untouched.
+  REQUIRE(s.exposure    == Catch::Approx(1.5f));
+  REQUIRE(s.temperature == Catch::Approx(30.0f));
+  REQUIRE(s.contrast    == Catch::Approx(10.0f));
+  REQUIRE(s.saturation  == Catch::Approx(-5.0f));
+}
+
+TEST_CASE("image.crop: partial params leave other crop fields untouched", "[crop]") {
+  TempDb f;
+  const std::string initial =
+    R"({"crop":{"x":0.05,"y":0.05,"w":0.9,"h":0.9,"angle":2.0}})";
+  const int64_t pid = f.insertPhoto(initial);
+  command::ImageCropHandler h(*f.repo);
+
+  // Only override x and y.
+  h.execute({{"id", pid}, {"x", 0.15}, {"y", 0.25}});
+
+  const auto rec = f.repo->findById(pid);
+  const auto s = EditSettings::fromJson(rec->editSettings);
+  REQUIRE(s.crop.x == Catch::Approx(0.15f));
+  REQUIRE(s.crop.y == Catch::Approx(0.25f));
+  REQUIRE(s.crop.w == Catch::Approx(0.9f));
+  REQUIRE(s.crop.h == Catch::Approx(0.9f));
+  REQUIRE(s.crop.angleDeg == Catch::Approx(2.0f));
+}
+
+TEST_CASE("image.crop: returns failure for unknown photo id", "[crop]") {
+  TempDb f;
+  command::ImageCropHandler h(*f.repo);
+  const auto result = h.execute({{"id", 99999}, {"x", 0.1}});
+  REQUIRE_FALSE(result.has_value());
+  REQUIRE(result.error().find("99999") != std::string::npos);
+}
+
+// ── ImageSaveHandler ──────────────────────────────────────────────────────────
+
+TEST_CASE("image.save: round-trips full JSON blob", "[save]") {
+  TempDb f;
+  const int64_t pid = f.insertPhoto();
+  command::ImageSaveHandler h(*f.repo, nullptr);
+
+  const nlohmann::json settings = {
+    {"exposure", 2.0}, {"temperature", -20.0}, {"contrast", 15.0}, {"saturation", 5.0},
+    {"crop", {{"x", 0.1}, {"y", 0.05}, {"w", 0.8}, {"h", 0.9}, {"angle", 3.5}}}
+  };
+  const auto result = h.execute({{"id", pid}, {"settings", settings}});
+
+  REQUIRE(result.has_value());
+  const auto rec = f.repo->findById(pid);
+  const auto s = EditSettings::fromJson(rec->editSettings);
+  REQUIRE(s.exposure    == Catch::Approx(2.0f));
+  REQUIRE(s.temperature == Catch::Approx(-20.0f));
+  REQUIRE(s.contrast    == Catch::Approx(15.0f));
+  REQUIRE(s.saturation  == Catch::Approx(5.0f));
+  REQUIRE(s.crop.x      == Catch::Approx(0.1f));
+  REQUIRE(s.crop.y      == Catch::Approx(0.05f));
+  REQUIRE(s.crop.w      == Catch::Approx(0.8f));
+  REQUIRE(s.crop.h      == Catch::Approx(0.9f));
+  REQUIRE(s.crop.angleDeg == Catch::Approx(3.5f));
+}
+
+TEST_CASE("image.save: fires savedCb with correct id", "[save]") {
+  TempDb f;
+  const int64_t pid = f.insertPhoto();
+
+  int callCount = 0;
+  int64_t calledWith = -1;
+  command::ImageSaveHandler h(*f.repo, [&](const int64_t id) {
+    ++callCount;
+    calledWith = id;
+  });
+
+  REQUIRE(h.execute({{"id", pid}, {"settings", nlohmann::json::object()}}).has_value());
+  REQUIRE(callCount == 1);
+  REQUIRE(calledWith == pid);
+}
+
+TEST_CASE("image.save: returns failure for unknown photo id", "[save]") {
+  TempDb f;
+
+  int callCount = 0;
+  command::ImageSaveHandler h(*f.repo, [&](int64_t) { ++callCount; });
+
+  const auto result = h.execute({{"id", 99999}, {"settings", nlohmann::json::object()}});
+  REQUIRE_FALSE(result.has_value());
   REQUIRE(callCount == 0);
 }
