@@ -47,6 +47,53 @@ static std::pair<int, int> scaleDimensions(int w, int h, int maxDim) {
   return {std::max(1, (int)((double)w / h * maxDim)), maxDim};
 }
 
+// Bilinear downsample of an interleaved RGB buffer (srcW×srcH → dstW×dstH).
+// Used when the required scale factor exceeds what a single JPEG DCT pass can provide.
+static std::vector<uint8_t> bilinearResizeRgb(const std::vector<uint8_t>& src,
+                                               int srcW, int srcH, int dstW, int dstH) {
+  std::vector<uint8_t> dst(static_cast<size_t>(dstW * dstH) * 3);
+  for (int dy = 0; dy < dstH; ++dy) {
+    const float sy  = (dy + 0.5f) * srcH / dstH - 0.5f;
+    const int   y0  = std::max(0, static_cast<int>(sy));
+    const int   y1  = std::min(srcH - 1, y0 + 1);
+    const float wy  = sy - static_cast<float>(y0);
+    for (int dx = 0; dx < dstW; ++dx) {
+      const float sx  = (dx + 0.5f) * srcW / dstW - 0.5f;
+      const int   x0  = std::max(0, static_cast<int>(sx));
+      const int   x1  = std::min(srcW - 1, x0 + 1);
+      const float wx  = sx - static_cast<float>(x0);
+      for (int c = 0; c < 3; ++c) {
+        const float v00 = src[(y0 * srcW + x0) * 3 + c];
+        const float v10 = src[(y0 * srcW + x1) * 3 + c];
+        const float v01 = src[(y1 * srcW + x0) * 3 + c];
+        const float v11 = src[(y1 * srcW + x1) * 3 + c];
+        const float val = v00*(1-wx)*(1-wy) + v10*wx*(1-wy)
+                        + v01*(1-wx)*wy     + v11*wx*wy;
+        dst[(dy * dstW + dx) * 3 + c] =
+            static_cast<uint8_t>(std::lround(std::clamp(val, 0.f, 255.f)));
+      }
+    }
+  }
+  return dst;
+}
+
+// Find the best JPEG DCT scaling factor: smallest output that is still >= [tw, th].
+// Returns the decoded dimensions to use for tjDecompress2.
+static std::pair<int,int> bestDctDecodeSize(int srcW, int srcH, int tw, int th) {
+  int nf = 0;
+  const tjscalingfactor* sf = tjGetScalingFactors(&nf);
+  int bestW = srcW, bestH = srcH;
+  for (int i = 0; i < nf; ++i) {
+    const int sw = TJSCALED(srcW, sf[i]);
+    const int sh = TJSCALED(srcH, sf[i]);
+    if (sw >= tw && sh >= th && sw < bestW) {
+      bestW = sw;
+      bestH = sh;
+    }
+  }
+  return {bestW, bestH};
+}
+
 static std::pair<int, int> readJpegDimensions(const std::vector<uint8_t>& jpeg) {
   tjhandle tj = tjInitDecompress();
   if (!tj) {
@@ -76,13 +123,23 @@ std::vector<uint8_t> ThumbnailCache::resizeJpeg(const std::vector<uint8_t>& src,
 
   auto [tw, th] = scaleDimensions(w, h, maxDim);
 
-  std::vector<uint8_t> rgb(tw * th * 3);
-  if (tjDecompress2(tj, src.data(), (unsigned long)src.size(), rgb.data(), tw, 0, th, TJPF_RGB,
-                    TJFLAG_FASTDCT) < 0) {
+  // Decode at the best available DCT scaling factor (≥ target size), then
+  // software-resize if the DCT output is still larger than [tw, th].
+  // This handles embedded JPEGs that are too large to decode directly to [tw, th]
+  // in a single DCT pass (e.g. Canon CR2 6720×4480 embedded JPEG → 256px thumb).
+  auto [decW, decH] = bestDctDecodeSize(w, h, tw, th);
+
+  std::vector<uint8_t> rgb(static_cast<size_t>(decW * decH) * 3);
+  if (tjDecompress2(tj, src.data(), (unsigned long)src.size(), rgb.data(), decW, 0, decH,
+                    TJPF_RGB, TJFLAG_FASTDCT) < 0) {
     tjDestroy(tj);
     return src;
   }
   tjDestroy(tj);
+
+  if (decW != tw || decH != th) {
+    rgb = bilinearResizeRgb(rgb, decW, decH, tw, th);
+  }
 
   if (scale < 0.999f) {
     for (auto& v : rgb) {

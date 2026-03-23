@@ -81,3 +81,28 @@ add_executable(test_pixel_pipeline
 )
 target_link_libraries(test_pixel_pipeline PRIVATE Catch2::Catch2WithMain)
 add_test(NAME test_pixel_pipeline COMMAND test_pixel_pipeline)
+
+# ── test_raw_decoder ──────────────────────────────────────────────────────────
+add_executable(test_raw_decoder
+    test_raw_decoder.cpp
+    ${CMAKE_SOURCE_DIR}/src/import/RawDecoder.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/PixelPipeline.cpp
+    ${CMAKE_SOURCE_DIR}/src/catalog/ThumbnailCache.cpp
+    ${CMAKE_SOURCE_DIR}/src/catalog/PhotoRepository.cpp
+    ${CMAKE_SOURCE_DIR}/src/catalog/Database.cpp
+    ${CMAKE_SOURCE_DIR}/src/catalog/Schema.cpp
+    ${CMAKE_SOURCE_DIR}/src/catalog/BackupManager.cpp
+)
+target_compile_definitions(test_raw_decoder PRIVATE
+    SPDLOG_COMPILED_LIB
+    "TEST_DATA_DIR=\"/Users/magoja/Documents/project/photos test data\""
+)
+target_link_libraries(test_raw_decoder PRIVATE
+    Catch2::Catch2WithMain
+    SQLite::SQLite3
+    ${HB}/lib/libspdlog.dylib
+    ${HB}/lib/libfmt.dylib
+    ${HB}/lib/libturbojpeg.dylib
+    ${HB}/lib/libraw.dylib
+)
+add_test(NAME test_raw_decoder COMMAND test_raw_decoder)

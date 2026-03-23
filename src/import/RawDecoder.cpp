@@ -100,30 +100,50 @@ static float computeJpegLuma(const std::vector<uint8_t>& jpeg) {
 
 // Do a half-size LibRaw decode on an already-open (but not yet unpacked) raw instance.
 // Returns the luminance scale (LibRaw luma / jpeg luma), clamped to [0.25, 1.0].
-// Returns 1.0 on any failure.
-static float computeRawLumaScale(LibRaw& raw, const std::vector<uint8_t>& thumbJpeg) {
-  if (raw.imgdata.idata.raw_count == 0) { return 1.f; }
-
+// Returns 1.0 on any failure (JPEG-only file, degenerate image, etc.).
+static float computeRawLumaScale(LibRaw& raw, const std::vector<uint8_t>& thumbJpeg,
+                                  const std::string& filePath) {
   const float jpegLuma = computeJpegLuma(thumbJpeg);
-  if (jpegLuma < 1.f) { return 1.f; }
+  if (jpegLuma < 1.f) {
+    spdlog::debug("lumaScale({}): jpegLuma={:.1f} — skipping (too dark or error)", filePath, jpegLuma);
+    return 1.f;
+  }
 
   raw.imgdata.params.half_size     = 1;
   raw.imgdata.params.output_bps    = 8;
   raw.imgdata.params.use_camera_wb = 1;
-  if (raw.unpack()        != LIBRAW_SUCCESS) { return 1.f; }
-  if (raw.dcraw_process() != LIBRAW_SUCCESS) { return 1.f; }
+
+  const int rc1 = raw.unpack();
+  if (rc1 != LIBRAW_SUCCESS) {
+    spdlog::debug("lumaScale({}): unpack() failed ({}), raw_count={} — JPEG-only or unsupported",
+                  filePath, libraw_strerror(rc1), raw.imgdata.idata.raw_count);
+    return 1.f;
+  }
+  const int rc2 = raw.dcraw_process();
+  if (rc2 != LIBRAW_SUCCESS) {
+    spdlog::debug("lumaScale({}): dcraw_process() failed ({})", filePath, libraw_strerror(rc2));
+    return 1.f;
+  }
 
   libraw_processed_image_t* img = raw.dcraw_make_mem_image();
   if (!img || img->type != LIBRAW_IMAGE_BITMAP || img->colors != 3) {
     if (img) { LibRaw::dcraw_clear_mem(img); }
+    spdlog::debug("lumaScale({}): dcraw_make_mem_image returned unexpected type", filePath);
     return 1.f;
   }
   const int pixelCount = img->width * img->height;
   const float rawLuma = util::computeLuma(img->data, pixelCount);
   LibRaw::dcraw_clear_mem(img);
 
-  if (rawLuma < 0.5f) { return 1.f; }
-  return std::clamp(rawLuma / jpegLuma, 0.25f, 1.0f);
+  if (rawLuma < 0.5f) {
+    spdlog::debug("lumaScale({}): rawLuma={:.1f} too dark — skipping", filePath, rawLuma);
+    return 1.f;
+  }
+
+  const float scale = std::clamp(rawLuma / jpegLuma, 0.25f, 1.0f);
+  spdlog::debug("lumaScale({}): jpegLuma={:.1f} rawLuma={:.1f} → scale={:.3f}",
+                filePath, jpegLuma, rawLuma, scale);
+  return scale;
 }
 
 // ── EXIF + GPS extraction ─────────────────────────────────────────────────────
@@ -187,7 +207,7 @@ DecodeResult RawDecoder::decode(const std::string& filePath) {
   extractThumbnail(*raw, result);
 
   if (!result.thumbJpeg.empty()) {
-    result.lumaScale = computeRawLumaScale(*raw, result.thumbJpeg);
+    result.lumaScale = computeRawLumaScale(*raw, result.thumbJpeg, filePath);
   }
 
   result.ok = true;
