@@ -67,76 +67,85 @@ ctest --preset debug --output-on-failure  # run tests
                  ├─── 11 (Fullscreen) ─── (needs 2)
                  └─── 12 (Export)     ─── (needs 2)
 
-9 (Grid) ──── 16 (Multi-select) ─┬─ 17 (Meta Sync)
-                                  └─ 18 (Export v2)
+9 (Grid) ──── [16✓ Multi-select] ─┬─ [17✓ Meta Sync]
+                                   └─ [18✓ Export v2]
+                                       └─ C1→C7 (Command System)
 ```
 
 ## Tasks
 
-- [x] **Task 16 — Multi-selection in Grid**
-  Files: `src/ui/GridView.h/.cpp`, `src/main.mm`
+- [ ] **Task C1 — Command system foundation**
+  Files: `src/command/CommandResult.h`, `src/command/ICommandHandler.h`,
+  `src/command/CommandRegistry.h/.cpp`, `tests/test_command_registry.cpp`,
+  update `CMakeLists.txt` (root + tests/)
 
-  - Replace `int64_t selectedId_` with `int64_t primaryId_` + `std::unordered_set<int64_t> selectedIds_`
-  - Click (no modifier): clear selection, set new primary → same behavior as today for single-photo open/edit
-  - Cmd+click: toggle photo in `selectedIds_`; if ≥1 selected, first selection becomes primary
-  - Shift+click: range-select from `primaryId_` to clicked photo in the grid order
-  - Visual: gold border for `primaryId_`, blue border for other selected, gray for unselected
-  - Show "N selected" label in grid header when `selectedIds_` non-empty
-  - Add `using MultiSelectCb = std::function<void(std::vector<int64_t>)>` callback
-  - `main.mm`: when selection ≥ 2, show "Sync Metadata" and "Export" toolbar buttons that open respective dialogs
-  - `selectedIds_` is in-memory only (no DB persistence), reset on folder change
-  - `primaryId_` replaces old `selectedId_` for single-photo open/fullscreen behavior
+  - `CommandResult { bool ok; std::string error; nlohmann::json data; }` with `success()`/`failure()` factories
+  - `ICommandHandler`: pure abstract `virtual CommandResult execute(nlohmann::json params) = 0`
+  - `CommandRegistry`: `registerHandler(name, handler)`, `dispatch(name, params)` — logs every call via spdlog as `[CMD] <name> -> ok/error`, returns `failure("unknown command: <name>")` for unregistered names
+  - Add `COMMAND_SOURCES` to root CMakeLists; add `test_command` target to tests/CMakeLists.txt
+  - Tests: dispatch unknown → failure with name in error; dispatch known → handler called with params; multiple handlers independent
 
-  ✓ Verify: Cmd+click 5 photos → 5 blue borders + "5 selected" label. Shift+click selects contiguous range. Plain click clears multi-selection and selects single. "Sync Metadata" and "Export" buttons appear in toolbar when ≥2 selected.
+  ✓ Verify: `ctest --preset debug -R test_command` passes.
 
-- [x] **Task 17 — Metadata Sync Dialog**
-  Files: `src/ui/MetaSyncDialog.h/.cpp`, `src/catalog/PhotoRepository.h/.cpp`, `src/main.mm`
+- [ ] **Task C2 — `image.adjust` and `image.revert` handlers**
+  Files: `src/command/handlers/ImageAdjustHandler.h/.cpp`,
+  `src/command/handlers/ImageRevertHandler.h/.cpp`, `tests/test_command_image.cpp`
 
-  *PhotoRepository additions:*
-  - `updateEditSettingsBulk(std::vector<int64_t> ids, std::string json)` — wraps individual `updateEditSettings` calls in a single `Transaction`
+  - `ImageAdjustHandler(PhotoRepository&)`: reads current EditSettings via `findById`, overlays only the JSON keys present in params (exposure, temperature, contrast, saturation), writes back via `updateEditSettings`
+  - `ImageRevertHandler(PhotoRepository&)`: writes `"{}"` to `edit_settings`
+  - Tests (TempDb fixture): adjust exposure → verified by findById; partial params leave other fields untouched; missing id → failure; revert clears settings
 
-  *MetaSyncDialog:*
-  - Constructor takes `PhotoRepository&` and `ThumbnailCache&`
-  - `open(int64_t primaryId, std::vector<int64_t> targetIds)` — loads source photo's `EditSettings` from DB
-  - `render()` — modal with:
-    - Source photo thumbnail + filename header
-    - Checkbox "Adjustments" (Adjust tab fields: exposure, temperature, contrast, saturation) — `static bool` persists between opens
-    - Checkbox "Crop" (Crop tab fields: x, y, w, h, angleDeg) — `static bool` persists between opens
-    - "Sync N photos" button → merges checked fields into each target's existing `EditSettings` JSON → calls `updateEditSettingsBulk` → fires `DoneCb`
-  - Merge logic: load target's current `EditSettings`, overwrite only the checked sub-fields, write back — so unchecked fields are untouched
-  - After sync: enqueue thumbnail regeneration for each modified photo via `ThumbnailCache::generateAsync`
+  ✓ Verify: `ctest --preset debug -R test_command` passes.
 
-  *main.mm:*
-  - Wire "Sync Metadata" button → `metaSyncDialog_.open(primaryId, selectedIds)`
-  - On `DoneCb`: call `gridView_.reload()` to refresh thumbnails
+- [ ] **Task C3 — `image.crop` and `image.save` handlers**
+  Files: `src/command/handlers/ImageCropHandler.h/.cpp`,
+  `src/command/handlers/ImageSaveHandler.h/.cpp`, extend `tests/test_command_image.cpp`
 
-  ✓ Verify: Select 5 photos where photo 1 has exposure=1.5. Open Sync → check "Adjustments" only → Sync → all 5 photos have exposure=1.5 in DB (`SELECT edit_settings FROM photos WHERE id IN (...)`). Crop fields unchanged. Thumbnails regenerate in grid.
+  - `ImageCropHandler(PhotoRepository&)`: reads current EditSettings, overwrites crop sub-fields only (x, y, w, h, angleDeg), writes back — leaves exposure/temperature/etc untouched
+  - `ImageSaveHandler(PhotoRepository&, std::function<void(int64_t)> savedCb)`: writes full EditSettings JSON blob, fires savedCb
+  - Tests: crop writes only crop fields; save round-trips JSON blob; save fires savedCb (verified via bool flag)
 
-- [x] **Task 18 — Export Selected as Google Photos JPEG**
-  Files: `src/export/Exporter.h/.cpp`, `src/ui/ExportDialog.h/.cpp`, `src/main.mm`
+  ✓ Verify: `ctest --preset debug -R test_command` passes.
 
-  *ExportDialog:*
-  - `open(int64_t primaryId, std::vector<int64_t> ids)` — replaces current single-photo open signature
-  - Remove preset selector; use single hardcoded "Google Photos" config: quality=90, maxDim=0 (full-res)
-  - Show target folder picker (NSOpenPanel, directory only) + "Export N photos" button
-  - Blocking modal: stays open during export showing progress bar + "done / total" file counter + Cancel button; dismisses automatically when complete
+- [ ] **Task C4 — `catalog.pick` and `catalog.photo.open` handlers**
+  Files: `src/command/handlers/CatalogPickHandler.h/.cpp`,
+  `src/command/handlers/CatalogOpenHandler.h/.cpp`, `tests/test_command_catalog.cpp`
 
-  *Exporter:*
-  - Per photo: use `LibRaw::unpack()` + `LibRaw::dcraw_process()` for full-res decode (instead of embedded JPEG thumbnail)
-  - Apply `EditSettings` from `edit_settings` JSON:
-    - Crop: decode full-res → crop region via pixel offset + dimensions
-    - Exposure: multiply pixel values by `pow(2, exposure)`
-    - Contrast/saturation/temperature: simple per-pixel adjustments (HSL-space for saturation, color matrix for temperature)
-  - Write EXIF APP1 block into output JPEG:
-    - `DateTimeOriginal` from `PhotoRecord.captureTime`
-    - `Make` / `Model` from `PhotoRecord.cameraMake` / `cameraModel`
-    - GPS IFD from `PhotoRecord.gpsLat` / `gpsLon` / `gpsAltM` (if non-zero)
-    - Write using libjpeg-turbo `jpeg_write_marker` for APP1
-  - Output filename: `{captureTime_date}_{original_filename_stem}.jpg`
-  - Background `ThreadPool` (reuse existing), `progressCb_` per file, `doneCb_` on completion
+  - `CatalogPickHandler(PhotoRepository&, std::function<void(int64_t, int)>)`: calls `updatePicked(id, picked)`, fires callback
+  - `CatalogOpenHandler(std::function<void(int64_t)>)`: fires selectCb only, no DB access
+  - Tests: pick updates DB `picked` column (verified by `queryByFolder(fid, true)`); callback fired with correct args; open fires selectCb
 
-  *main.mm:*
-  - Wire "Export" button → `exportDialog_.open(primaryId, selectedIds)`
-  - Toolbar "Export" button available when ≥1 photo selected (single-photo export works too)
+  ✓ Verify: `ctest --preset debug -R test_command` passes.
 
-  ✓ Verify: Select 10 RAW photos with various edits → Export → 10 JPEGs in target folder, each full-res with crop applied. `exiftool output.jpg` shows correct `DateTimeOriginal`, `Make`, `Model`. Photos import cleanly into Google Photos with correct dates.
+- [ ] **Task C5 — `metasync.apply` handler**
+  Files: `src/command/handlers/MetaSyncHandler.h/.cpp`, `tests/test_command_metasync.cpp`
+
+  - `MetaSyncHandler(PhotoRepository&, std::function<void()> doneCb)`
+  - Extract merge logic from `MetaSyncDialog::performSync()` into this handler; MetaSyncDialog becomes a thin caller
+  - Params: `{primaryId, targetIds: [int64], syncAdjust: bool, syncCrop: bool}`
+  - Single DB transaction via `updateEditSettingsBulk`; fire doneCb after commit
+  - Tests: syncAdjust only → exposure propagated, crop unchanged; syncCrop only; both; doneCb fires exactly once
+
+  ✓ Verify: `ctest --preset debug -R test_command` passes.
+
+- [ ] **Task C6 — `export.photos` handler**
+  Files: `src/command/handlers/ExportHandler.h/.cpp`
+
+  - `ExportHandler(PhotoRepository&, ProgressCb, DoneCb)`: owns `std::unique_ptr<Exporter>`
+  - `execute` params: `{primaryId, ids: [int64], targetPath, quality? (default 90)}`
+  - Constructs `ExportPreset`, calls `exporter_->start(ids)`, returns `success()` immediately
+  - Returns `failure()` if an export is already in progress
+  - No unit test (LibRaw required); verified by build + smoke run
+
+  ✓ Verify: build succeeds; manual export in app produces JPEG files with correct EXIF.
+
+- [ ] **Task C7 — Wire registry into main.mm + replace direct calls**
+  Files: `src/main.mm`, `src/ui/EditView.mm`, `src/ui/ExportDialog.cpp`,
+  `src/ui/MetaSyncDialog.cpp`, `src/ui/FullscreenView.cpp`
+
+  - Add `command::CommandRegistry` to `RenderCtx`
+  - Register all 8 handlers at app startup with real deps (repo, thumbCache, callbacks)
+  - Replace direct calls in UI components with `registry.dispatch("command.name", params)`
+  - Every action emits `[CMD] <name> <params>` in spdlog log
+
+  ✓ Verify: launch app; perform adjust, save, crop, pick, export, sync — spdlog shows `[CMD]` line for each action. All existing functionality unchanged.
