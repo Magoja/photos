@@ -42,6 +42,9 @@ class GridView {
   // Select every photo in the current view (sets primary to first, rest to selectedIds_)
   void selectAll();
 
+  // Deselect all photos
+  void clearSelection();
+
   int columnCount() const { return cols_; }
 
   // Primary selection (compat: replaces old selectedId())

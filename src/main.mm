@@ -317,8 +317,15 @@ static void processGlobalHotkeys(RenderCtx& ctx) {
   if (io.WantTextInput) { return; }
 
   // Cmd+A: select all photos in the current view (works even with no current selection)
-  if (ImGui::IsKeyPressed(ImGuiKey_A) && io.KeySuper) {
+  if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_A)) {
     ctx.grid.selectAll();
+  }
+
+  // ESC: cancel selection (only when grid is active, not fullscreen/edit)
+  if (ImGui::IsKeyPressed(ImGuiKey_Escape) &&
+      !ctx.fullscreen.isOpen() && !ctx.editView.isOpen() &&
+      ctx.grid.selectionCount() > 0) {
+    ctx.grid.clearSelection();
   }
 
   const int64_t selId = ctx.grid.selectedId();
@@ -336,7 +343,7 @@ static void processGlobalHotkeys(RenderCtx& ctx) {
   if (ImGui::IsKeyPressed(ImGuiKey_R)) {
     openOrSwitchEditMode(ctx.fullscreen, ctx.editView, selId, ui::EditMode::Crop);
   }
-  if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent)) { togglePickSelection(ctx); }
+  if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent) && !ctx.fullscreen.isOpen()) { togglePickSelection(ctx); }
   if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))   { ctx.grid.navigatePrimary(-1); }
   if (ImGui::IsKeyPressed(ImGuiKey_RightArrow))  { ctx.grid.navigatePrimary(+1); }
   if (ImGui::IsKeyPressed(ImGuiKey_UpArrow))     { ctx.grid.navigatePrimary(-ctx.grid.columnCount()); }

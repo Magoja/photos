@@ -67,7 +67,7 @@ void GridView::handleCellClick(int64_t pid) {
   const auto& io = ImGui::GetIO();
   if (io.KeyShift && primaryId_ > 0) {
     applyRangeSelect(primaryId_, pid);
-  } else if (io.KeySuper) {
+  } else if (io.KeyCtrl) {
     if (pid == primaryId_) {
       // Cmd+click on primary: promote first of selectedIds_ to primary
       if (!selectedIds_.empty()) {
@@ -118,6 +118,11 @@ void GridView::selectAll() {
   primaryId_ = photoIds_.front();
   std::ranges::for_each(photoIds_ | std::views::drop(1),
     [this](const int64_t id) { selectedIds_.insert(id); });
+}
+
+void GridView::clearSelection() {
+  primaryId_ = 0;
+  selectedIds_.clear();
 }
 
 // ── Layout helpers ────────────────────────────────────────────────────────────
