@@ -39,6 +39,9 @@ class GridView {
   // Move primary selection by delta cells (±1 for left/right, ±cols_ for up/down)
   void navigatePrimary(int delta);
 
+  // Select every photo in the current view (sets primary to first, rest to selectedIds_)
+  void selectAll();
+
   int columnCount() const { return cols_; }
 
   // Primary selection (compat: replaces old selectedId())

@@ -112,6 +112,14 @@ void GridView::navigatePrimary(int delta) {
   if (onSelectCb_) { onSelectCb_(primaryId_); }
 }
 
+void GridView::selectAll() {
+  if (photoIds_.empty()) { return; }
+  selectedIds_.clear();
+  primaryId_ = photoIds_.front();
+  std::ranges::for_each(photoIds_ | std::views::drop(1),
+    [this](const int64_t id) { selectedIds_.insert(id); });
+}
+
 // ── Layout helpers ────────────────────────────────────────────────────────────
 
 static std::pair<int, int> computeVisibleRowRange(int totalRows, float rowH, float scrollY,

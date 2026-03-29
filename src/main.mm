@@ -293,12 +293,34 @@ static void drainTextureEvictions(RenderCtx& ctx) {
   }
 }
 
-static void processGlobalHotkeys(RenderCtx& ctx) {
-  const bool noTextInput = !ImGui::GetIO().WantTextInput;
-  const int64_t selId    = ctx.grid.selectedId();
-  if (!noTextInput || selId <= 0) {
-    return;
+static void togglePickSelection(RenderCtx& ctx) {
+  const int64_t selId = ctx.grid.selectedId();
+  if (selId <= 0) { return; }
+  const auto rec = ctx.repo.findById(selId);
+  if (!rec) { return; }
+  const int newPicked = rec->picked ? 0 : 1;
+
+  // Capture IDs before dispatching — each dispatch triggers grid.reload()
+  std::vector<int64_t> toToggle{selId};
+  for (const auto id : ctx.grid.selectedIds()) { toToggle.push_back(id); }
+
+  for (const auto id : toToggle) {
+    ctx.registry.dispatch("catalog.pick", {{"id", id}, {"picked", newPicked}});
   }
+}
+
+static void processGlobalHotkeys(RenderCtx& ctx) {
+  const auto& io = ImGui::GetIO();
+  if (io.WantTextInput) { return; }
+
+  // Cmd+A: select all photos in the current view (works even with no current selection)
+  if (ImGui::IsKeyPressed(ImGuiKey_A) && io.KeySuper) {
+    ctx.grid.selectAll();
+  }
+
+  const int64_t selId = ctx.grid.selectedId();
+  if (selId <= 0) { return; }
+
   if (ImGui::IsKeyPressed(ImGuiKey_F) && !ctx.fullscreen.isOpen()) {
     ctx.editView.close();
     std::vector<int64_t> ids = ctx.repo.queryAll(false);
@@ -311,10 +333,11 @@ static void processGlobalHotkeys(RenderCtx& ctx) {
   if (ImGui::IsKeyPressed(ImGuiKey_R)) {
     openOrSwitchEditMode(ctx.fullscreen, ctx.editView, selId, ui::EditMode::Crop);
   }
-  if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))  { ctx.grid.navigatePrimary(-1); }
-  if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) { ctx.grid.navigatePrimary(+1); }
-  if (ImGui::IsKeyPressed(ImGuiKey_UpArrow))    { ctx.grid.navigatePrimary(-ctx.grid.columnCount()); }
-  if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))  { ctx.grid.navigatePrimary(+ctx.grid.columnCount()); }
+  if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent)) { togglePickSelection(ctx); }
+  if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))   { ctx.grid.navigatePrimary(-1); }
+  if (ImGui::IsKeyPressed(ImGuiKey_RightArrow))  { ctx.grid.navigatePrimary(+1); }
+  if (ImGui::IsKeyPressed(ImGuiKey_UpArrow))     { ctx.grid.navigatePrimary(-ctx.grid.columnCount()); }
+  if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))   { ctx.grid.navigatePrimary(+ctx.grid.columnCount()); }
 }
 
 static void renderMenuBar(RenderCtx& ctx) {
