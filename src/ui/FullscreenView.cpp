@@ -8,6 +8,54 @@
 #include <algorithm>
 #include <ranges>
 
+namespace {
+
+// Shared LibRaw decode + tone-adjust + RGBA-convert used by both
+// startDecodeForCurrent and startPrefetch.
+static void decodePhotoToRgba(const std::string& filePath,
+                               const catalog::EditSettings& es,
+                               std::atomic<bool>& cancelFlag,
+                               std::vector<uint8_t>& outRgba, int& outW, int& outH,
+                               std::atomic<bool>& readyFlag) {
+  auto raw = std::make_unique<LibRaw>();
+  raw->imgdata.params.output_bps    = 8;
+  raw->imgdata.params.use_camera_wb = 1;
+  if (raw->open_file(filePath.c_str()) != LIBRAW_SUCCESS ||
+      raw->unpack()                     != LIBRAW_SUCCESS ||
+      raw->dcraw_process()              != LIBRAW_SUCCESS) {
+    spdlog::warn("FullscreenView: LibRaw decode failed for {}", filePath);
+    readyFlag = true;
+    return;
+  }
+  if (cancelFlag.load()) { return; }
+
+  libraw_processed_image_t* img = raw->dcraw_make_mem_image();
+  if (!img || img->type != LIBRAW_IMAGE_BITMAP || img->colors != 3) {
+    if (img) { LibRaw::dcraw_clear_mem(img); }
+    readyFlag = true;
+    return;
+  }
+
+  constexpr int kMaxEdge = 2000;
+  const int scale = std::max(1, std::max(img->width, img->height) / kMaxEdge);
+  int dsW = 0, dsH = 0;
+  auto rgb = util::downsampleRgb(img->data, img->width, img->height, scale, dsW, dsH);
+  LibRaw::dcraw_clear_mem(img);
+
+  if (cancelFlag.load()) { return; }
+
+  const auto adjusted = util::applyAdjustments(rgb, dsW, dsH, es);
+  outRgba = util::rgbToRgba(adjusted, dsW * dsH);
+  outW = dsW;
+  outH = dsH;
+
+  if (!cancelFlag.load()) {
+    readyFlag = true;
+  }
+}
+
+}  // anonymous namespace
+
 namespace ui {
 
 FullscreenView::FullscreenView(catalog::PhotoRepository& repo, TextureManager& texMgr)
@@ -15,6 +63,7 @@ FullscreenView::FullscreenView(catalog::PhotoRepository& repo, TextureManager& t
 
 FullscreenView::~FullscreenView() {
   cancelDecode();
+  cancelPrefetch();
 }
 
 // ── Background decode ─────────────────────────────────────────────────────────
@@ -46,53 +95,76 @@ void FullscreenView::startDecodeForCurrent() {
   decodeReady_   = false;
 
   decodeThread_ = std::thread([this, srcPath, es]() {
-    auto raw = std::make_unique<LibRaw>();
-    raw->imgdata.params.output_bps    = 8;
-    raw->imgdata.params.use_camera_wb = 1;
-    if (raw->open_file(srcPath.c_str()) != LIBRAW_SUCCESS ||
-        raw->unpack()                    != LIBRAW_SUCCESS ||
-        raw->dcraw_process()             != LIBRAW_SUCCESS) {
-      spdlog::warn("FullscreenView: LibRaw decode failed for {}", srcPath);
-      decodeReady_ = true;
-      return;
-    }
-    if (decodeCancel_.load()) { return; }
-
-    libraw_processed_image_t* img = raw->dcraw_make_mem_image();
-    if (!img || img->type != LIBRAW_IMAGE_BITMAP || img->colors != 3) {
-      if (img) { LibRaw::dcraw_clear_mem(img); }
-      decodeReady_ = true;
-      return;
-    }
-
-    constexpr int kMaxEdge = 2000;
-    const int scale = std::max(1, std::max(img->width, img->height) / kMaxEdge);
-    int dsW = 0, dsH = 0;
-    auto rgb = util::downsampleRgb(img->data, img->width, img->height, scale, dsW, dsH);
-    LibRaw::dcraw_clear_mem(img);
-
-    if (decodeCancel_.load()) { return; }
-
-    const auto adjusted = util::applyAdjustments(rgb, dsW, dsH, es);
-    pendingRgba_ = util::rgbToRgba(adjusted, dsW * dsH);
-    pendingW_ = dsW;
-    pendingH_ = dsH;
-
-    if (!decodeCancel_.load()) {
-      decodeReady_ = true;
-    }
+    decodePhotoToRgba(srcPath, es, decodeCancel_, pendingRgba_, pendingW_, pendingH_, decodeReady_);
   });
 }
 
 void FullscreenView::pollDecodeResult() {
-  if (!decoding_ || !decodeReady_.load()) { return; }
-  decodeThread_.join();
-  decoding_    = false;
-  decodeReady_ = false;
+  if (decoding_ && decodeReady_.load()) {
+    decodeThread_.join();
+    decoding_    = false;
+    decodeReady_ = false;
 
-  if (!pendingRgba_.empty()) {
-    texMgr_.uploadRgba(decodingForId_ + kAdjOffset, pendingRgba_, pendingW_, pendingH_);
-    pendingRgba_.clear();
+    if (!pendingRgba_.empty()) {
+      texMgr_.uploadRgba(decodingForId_ + kAdjOffset, pendingRgba_, pendingW_, pendingH_);
+      pendingRgba_.clear();
+    }
+    addToAdjCache(decodingForId_);
+    startPrefetch(currentIdx_ + lastDelta_);
+  }
+
+  // Poll prefetch completion
+  if (prefetching_ && prefetchReady_.load()) {
+    prefetchThread_.join();
+    prefetching_   = false;
+    prefetchReady_ = false;
+    if (!prefetchRgba_.empty()) {
+      texMgr_.uploadRgba(prefetchForId_ + kAdjOffset, prefetchRgba_, prefetchW_, prefetchH_);
+      prefetchRgba_.clear();
+    }
+    addToAdjCache(prefetchForId_);
+  }
+}
+
+void FullscreenView::startPrefetch(int targetIdx) {
+  if (prefetching_) { return; }
+  if (targetIdx < 0 || targetIdx >= static_cast<int>(photoIds_.size())) { return; }
+  const int64_t targetId = photoIds_[targetIdx];
+  if (adjCachedIds_.count(targetId)) { return; }  // already cached
+
+  const auto rec = repo_.findById(targetId);
+  if (!rec || rec->thumbPath.find("thumbs_edit") != std::string::npos) { return; }
+
+  const std::string srcPath = repo_.fullPathFor(rec->folderId, rec->filename);
+  if (srcPath.empty()) { return; }
+
+  const catalog::EditSettings es = catalog::EditSettings::fromJson(rec->editSettings);
+  prefetchForId_  = targetId;
+  prefetching_    = true;
+  prefetchCancel_ = false;
+  prefetchReady_  = false;
+  prefetchThread_ = std::thread([this, srcPath, es]() mutable {
+    decodePhotoToRgba(srcPath, es, prefetchCancel_, prefetchRgba_, prefetchW_, prefetchH_, prefetchReady_);
+  });
+}
+
+void FullscreenView::cancelPrefetch() {
+  prefetchCancel_ = true;
+  if (prefetchThread_.joinable()) { prefetchThread_.join(); }
+  prefetching_   = false;
+  prefetchReady_ = false;
+  prefetchRgba_.clear();
+}
+
+void FullscreenView::addToAdjCache(int64_t id) {
+  if (adjCachedIds_.count(id)) { return; }
+  adjCachedIds_.insert(id);
+  adjCacheOrder_.push_back(id);
+  while (static_cast<int>(adjCacheOrder_.size()) > kAdjCacheMax) {
+    const int64_t oldest = adjCacheOrder_.front();
+    adjCacheOrder_.pop_front();
+    adjCachedIds_.erase(oldest);
+    texMgr_.evict(oldest + kAdjOffset);
   }
 }
 
@@ -105,7 +177,12 @@ void FullscreenView::setPhotoList(std::vector<int64_t> ids, int64_t currentId) {
 
 void FullscreenView::open(int64_t photoId) {
   cancelDecode();
-  texMgr_.evict(currentId_ + kAdjOffset);
+  cancelPrefetch();
+  for (const auto id : adjCachedIds_) { texMgr_.evict(id + kAdjOffset); }
+  adjCachedIds_.clear();
+  adjCacheOrder_.clear();
+  lastDelta_ = 1;
+
   currentId_ = photoId;
   open_ = true;
   resetView();
@@ -114,6 +191,10 @@ void FullscreenView::open(int64_t photoId) {
 
 void FullscreenView::close() {
   cancelDecode();
+  cancelPrefetch();
+  for (const auto id : adjCachedIds_) { texMgr_.evict(id + kAdjOffset); }
+  adjCachedIds_.clear();
+  adjCacheOrder_.clear();
   open_ = false;
 }
 
@@ -124,15 +205,25 @@ void FullscreenView::resetView() {
 }
 
 void FullscreenView::navigate(int delta) {
-  if (photoIds_.empty()) {
-    return;
-  }
+  if (photoIds_.empty()) { return; }
+  const int newIdx = std::clamp(currentIdx_ + delta, 0, (int)photoIds_.size() - 1);
+  if (newIdx == currentIdx_) { return; }
+  lastDelta_ = (delta > 0) ? 1 : -1;
+
   cancelDecode();
-  texMgr_.evict(currentId_ + kAdjOffset);
-  currentIdx_ = std::clamp(currentIdx_ + delta, 0, (int)photoIds_.size() - 1);
-  currentId_ = photoIds_[currentIdx_];
+  cancelPrefetch();
+  // Adj texture is kept alive in adjCacheOrder_ — no evict here
+
+  currentIdx_ = newIdx;
+  currentId_  = photoIds_[newIdx];
   resetView();
-  startDecodeForCurrent();
+
+  if (adjCachedIds_.count(currentId_)) {
+    startPrefetch(currentIdx_ + lastDelta_);
+  } else {
+    startDecodeForCurrent();
+    // prefetch triggered by pollDecodeResult after decode completes
+  }
 }
 
 // ── Input handlers ────────────────────────────────────────────────────────────

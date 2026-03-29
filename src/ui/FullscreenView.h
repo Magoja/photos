@@ -3,6 +3,8 @@
 #include "catalog/PhotoRepository.h"
 #include "imgui.h"
 #include <vector>
+#include <deque>
+#include <unordered_set>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -48,11 +50,17 @@ class FullscreenView {
   std::vector<int64_t> photoIds_;
   // Offset added to photoId when storing the tone-adjusted texture in TextureManager.
   // Must not collide with kMicroOffset (1'000'000'000).
-  static constexpr int64_t kAdjOffset = 2'000'000'000LL;
+  static constexpr int64_t kAdjOffset   = 2'000'000'000LL;
+  static constexpr int     kAdjCacheMax = 5;
 
   int64_t currentId_ = 0;
   int currentIdx_ = 0;
   bool open_ = false;
+
+  // Adj-texture LRU cache (capacity kAdjCacheMax)
+  std::deque<int64_t>          adjCacheOrder_;
+  std::unordered_set<int64_t>  adjCachedIds_;
+  int                          lastDelta_ = 1;
 
   float zoom_ = 1.f;
   float panX_ = 0.f;
@@ -68,6 +76,16 @@ class FullscreenView {
   int                    pendingH_ = 0;
   int64_t                decodingForId_ = 0;
 
+  // Prefetch job (mirrors the existing decode job pattern)
+  std::thread            prefetchThread_;
+  std::atomic<bool>      prefetchCancel_{false};
+  std::atomic<bool>      prefetchReady_{false};
+  bool                   prefetching_   = false;
+  std::vector<uint8_t>   prefetchRgba_;
+  int                    prefetchW_     = 0;
+  int                    prefetchH_     = 0;
+  int64_t                prefetchForId_ = 0;
+
   // Toast state
   bool toastVisible_ = false;
   float toastTimeLeft_ = 0.f;
@@ -78,6 +96,9 @@ class FullscreenView {
   void startDecodeForCurrent();
   void cancelDecode();
   void pollDecodeResult();
+  void startPrefetch(int targetIdx);
+  void cancelPrefetch();
+  void addToAdjCache(int64_t id);
 
   void handleNavKeys();
   void togglePickCurrentPhoto(int64_t photoId);
