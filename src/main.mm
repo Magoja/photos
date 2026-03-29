@@ -572,7 +572,7 @@ int main(int /*argc*/, char** /*argv*/) {
   ui::FilterBar filterBar;
   ui::FullscreenView fullscreen(repo, texMgr);
   ui::EditView editView(repo, thumbCache, texMgr, (MTLDevicePtr)device);
-  ui::ImportDialog importDlg(db);
+  ui::ImportDialog importDlg(db, texMgr);
   export_ns::ExportSession exportSession(repo);
   ui::ExportDialog exportDlg(repo, exportSession);
   ui::MetaSyncDialog metaSyncDlg(repo, texMgr);

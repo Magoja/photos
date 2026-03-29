@@ -77,6 +77,7 @@ set(IMPORT_SOURCES
     src/import/RawDecoder.cpp
     src/import/HashDedup.cpp
     src/import/Importer.cpp
+    src/import/PreviewScanner.cpp
 )
 
 set(UI_SOURCES

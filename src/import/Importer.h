@@ -3,6 +3,7 @@
 #include "catalog/PhotoRepository.h"
 #include "catalog/ThumbnailCache.h"
 #include <string>
+#include <vector>
 #include <atomic>
 #include <functional>
 #include <thread>
@@ -17,11 +18,17 @@ struct ImportStats {
   int errors = 0;
 };
 
+enum class ConflictResolution { Skip, Rename, Overwrite };
+using ConflictCb = std::function<ConflictResolution(const std::string& filename,
+                                                    const std::string& destDir)>;
+
 struct ImportOptions {
   std::string sourcePath;
-  std::string destPath;  // root of library storage
+  std::string destPath;       // root of library storage
   std::string thumbCacheRoot;
-  bool copyFiles = true;  // false = leave in place (linked import)
+  bool copyFiles = true;      // false = leave in place (linked import)
+  std::vector<std::string> selectedFiles;  // if non-empty, import only these paths
+  ConflictCb conflictCb;      // called on filename collision; nullptr → skip
 };
 
 using ProgressCb = std::function<void(int done, int total, const std::string& current)>;

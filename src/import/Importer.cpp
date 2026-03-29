@@ -45,19 +45,66 @@ static std::optional<int64_t> dbDuplicateCheck(Database& db, const std::string& 
   return HashDedup::isDuplicate(db, hash);
 }
 
-static std::optional<std::string> copyToDestination(const std::string& srcPath,
+static std::optional<std::string> renameDestination(const std::string& srcPath,
                                                     const std::string& destDir) {
-  std::string destFile = destDir + "/" + fs::path(srcPath).filename().string();
-  std::error_code eq_ec;
-  bool alreadyThere = fs::equivalent(srcPath, destFile, eq_ec) && !eq_ec;
-  if (!alreadyThere) {
-    fs::create_directories(destDir);
-    std::error_code cp_ec;
-    fs::copy_file(srcPath, destFile, fs::copy_options::skip_existing, cp_ec);
-    if (cp_ec) {
-      spdlog::warn("Import: copy failed for {}: {}", srcPath, cp_ec.message());
-      return std::nullopt;
+  const auto stem = fs::path(srcPath).stem().string();
+  const auto ext  = fs::path(srcPath).extension().string();
+  for (int i = 1; i < 1000; ++i) {
+    const auto newName = stem + "-" + std::to_string(i) + ext;
+    const auto newDest = destDir + "/" + newName;
+    if (!fs::exists(newDest)) {
+      std::error_code cp_ec;
+      fs::copy_file(srcPath, newDest, cp_ec);
+      if (cp_ec) {
+        spdlog::warn("Import: rename-copy failed for {}: {}", srcPath, cp_ec.message());
+        return std::nullopt;
+      }
+      return newDest;
     }
+  }
+  spdlog::warn("Import: no available rename slot for {}", fs::path(srcPath).filename().string());
+  return std::nullopt;
+}
+
+static std::optional<std::string> copyToDestination(const std::string& srcPath,
+                                                    const std::string& destDir,
+                                                    const ConflictCb& conflictCb) {
+  const auto filename = fs::path(srcPath).filename().string();
+  const auto destFile = destDir + "/" + filename;
+
+  std::error_code eq_ec;
+  const bool alreadyThere = fs::equivalent(srcPath, destFile, eq_ec) && !eq_ec;
+  if (alreadyThere) {
+    return destFile;
+  }
+
+  fs::create_directories(destDir);
+
+  if (fs::exists(destFile)) {
+    const auto res = conflictCb ? conflictCb(filename, destDir)
+                                : ConflictResolution::Skip;
+    switch (res) {
+      case ConflictResolution::Skip:
+        return std::nullopt;
+      case ConflictResolution::Overwrite: {
+        std::error_code cp_ec;
+        fs::copy_file(srcPath, destFile, fs::copy_options::overwrite_existing, cp_ec);
+        if (cp_ec) {
+          spdlog::warn("Import: overwrite failed for {}: {}", srcPath, cp_ec.message());
+          return std::nullopt;
+        }
+        return destFile;
+      }
+      case ConflictResolution::Rename:
+        return renameDestination(srcPath, destDir);
+    }
+  }
+
+  std::error_code cp_ec;
+  fs::copy_file(srcPath, destFile, fs::copy_options::skip_existing, cp_ec);
+  if (cp_ec) {
+    spdlog::warn("Import: copy failed for {}: {}", srcPath, cp_ec.message());
+    return std::nullopt;
   }
   return destFile;
 }
@@ -92,7 +139,17 @@ static PhotoRecord buildPhotoRecord(const DecodeResult& dec, int64_t folderId,
 void Importer::run() {
   spdlog::info("Import started from: {}", opts_.sourcePath);
 
-  auto files = FileScanner::scan(opts_.sourcePath);
+  std::vector<ScannedFile> files;
+  if (opts_.selectedFiles.empty()) {
+    files = FileScanner::scan(opts_.sourcePath);
+  } else {
+    files.reserve(opts_.selectedFiles.size());
+    for (const auto& path : opts_.selectedFiles) {
+      std::error_code ec;
+      const auto sz = static_cast<int64_t>(fs::file_size(path, ec));
+      files.push_back({.path = path, .size = ec ? 0 : sz});
+    }
+  }
   stats_.total = static_cast<int>(files.size());
   spdlog::info("Import: found {} files", stats_.total);
 
@@ -126,7 +183,8 @@ void Importer::run() {
 
       std::string destFile;
       if (opts_.copyFiles) {
-        auto result = copyToDestination(sf.path, destForDate(dec.exif.captureTime));
+        auto result = copyToDestination(sf.path, destForDate(dec.exif.captureTime),
+                                       opts_.conflictCb);
         if (!result) {
           ++stats_.errors;
           continue;
