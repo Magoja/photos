@@ -32,4 +32,16 @@ std::vector<uint8_t> applyAdjustments(const std::vector<uint8_t>& src,
                                        int w, int h,
                                        const catalog::EditSettings& s);
 
+// Apply bilinear-interpolation rotation (in-place over crop buffer).
+// angleDeg > 0 rotates clockwise. No-op when angleDeg == 0.
+std::vector<uint8_t> rotateCropBuffer(const std::vector<uint8_t>& src,
+                                      int w, int h, float angleDeg);
+
+// Extract crop rectangle then apply straighten rotation.
+// outW/outH receive result dimensions.
+std::vector<uint8_t> cropAndRotatePixels(const std::vector<uint8_t>& src,
+                                         int srcW, int srcH,
+                                         const catalog::CropRect& crop,
+                                         int& outW, int& outH);
+
 }  // namespace util

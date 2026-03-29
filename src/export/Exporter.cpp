@@ -48,25 +48,6 @@ static std::vector<uint8_t> applyAdjustments(const std::vector<uint8_t>& src, in
   return util::applyAdjustments(src, w, h, s);
 }
 
-static std::vector<uint8_t> applyCrop(const std::vector<uint8_t>& src, int srcW, int srcH,
-                                      const CropRect& crop, int& outW, int& outH) {
-  const int cropX = static_cast<int>(crop.x * srcW);
-  const int cropY = static_cast<int>(crop.y * srcH);
-  outW = std::max(1, static_cast<int>(crop.w * srcW));
-  outH = std::max(1, static_cast<int>(crop.h * srcH));
-
-  std::vector<uint8_t> cropped(outW * outH * 3);
-  for (int y = 0; y < outH; ++y) {
-    const int srcRow = std::clamp(cropY + y, 0, srcH - 1);
-    const int dstOff = y * outW * 3;
-    const int srcOff = (srcRow * srcW + std::clamp(cropX, 0, srcW - 1)) * 3;
-    const int copyW  = std::min(outW, srcW - std::clamp(cropX, 0, srcW - 1));
-    if (copyW > 0) {
-      std::copy_n(src.begin() + srcOff, copyW * 3, cropped.begin() + dstOff);
-    }
-  }
-  return cropped;
-}
 
 static std::vector<uint8_t> compressToJpeg(const std::vector<uint8_t>& rgb, int w, int h,
                                             int quality) {
@@ -366,9 +347,10 @@ bool Exporter::exportOne(const PhotoRecord& rec, const fs::path& destPath) {
   const EditSettings settings = EditSettings::fromJson(rec.editSettings);
   const auto adjusted = applyAdjustments(rgb, srcW, srcH, settings);
 
-  // 3. Apply crop
+  // 3. Apply crop + straighten
   int outW = srcW, outH = srcH;
-  const auto cropped = applyCrop(adjusted, srcW, srcH, settings.crop, outW, outH);
+  const auto cropped = util::cropAndRotatePixels(adjusted, srcW, srcH,
+                                                 settings.crop, outW, outH);
 
   // 4. Compress to JPEG
   auto jpeg = compressToJpeg(cropped, outW, outH, preset_.quality);

@@ -1,4 +1,5 @@
 #include "PixelPipeline.h"
+#include <array>
 #include <cmath>
 #include <algorithm>
 
@@ -87,6 +88,77 @@ std::vector<uint8_t> applyAdjustments(const std::vector<uint8_t>& src,
     dst[i * 3 + 2] = static_cast<uint8_t>(std::lround(std::clamp(b, 0.f, 255.f)));
   }
   return dst;
+}
+
+std::vector<uint8_t> rotateCropBuffer(const std::vector<uint8_t>& src,
+                                      int w, int h, float angleDeg) {
+  if (angleDeg == 0.f) {
+    return src;
+  }
+  const float rad  = angleDeg * (float)M_PI / 180.f;
+  const float cosA = std::cos(-rad);
+  const float sinA = std::sin(-rad);
+  const float cx   = w * 0.5f;
+  const float cy   = h * 0.5f;
+
+  std::vector<uint8_t> dst(w * h * 3, 0);
+  for (int y = 0; y < h; ++y) {
+    for (int x = 0; x < w; ++x) {
+      const float dx = x - cx;
+      const float dy = y - cy;
+      const float sx = cosA * dx - sinA * dy + cx;
+      const float sy = sinA * dx + cosA * dy + cy;
+
+      const int x0 = (int)sx;
+      const int y0 = (int)sy;
+      const float fx = sx - x0;
+      const float fy = sy - y0;
+
+      auto sample = [&](int px, int py) -> std::array<float, 3> {
+        px = std::clamp(px, 0, w - 1);
+        py = std::clamp(py, 0, h - 1);
+        const int idx = (py * w + px) * 3;
+        return {(float)src[idx], (float)src[idx+1], (float)src[idx+2]};
+      };
+      const auto s00 = sample(x0,   y0);
+      const auto s10 = sample(x0+1, y0);
+      const auto s01 = sample(x0,   y0+1);
+      const auto s11 = sample(x0+1, y0+1);
+
+      const int outIdx = (y * w + x) * 3;
+      for (int c = 0; c < 3; ++c) {
+        const float val = s00[c]*(1.f-fx)*(1.f-fy) + s10[c]*fx*(1.f-fy)
+                        + s01[c]*(1.f-fx)*fy        + s11[c]*fx*fy;
+        dst[outIdx+c] = (uint8_t)std::clamp(val, 0.f, 255.f);
+      }
+    }
+  }
+  return dst;
+}
+
+std::vector<uint8_t> cropAndRotatePixels(const std::vector<uint8_t>& src,
+                                         int srcW, int srcH,
+                                         const catalog::CropRect& crop,
+                                         int& outW, int& outH) {
+  const int cropX = (int)(crop.x * srcW);
+  const int cropY = (int)(crop.y * srcH);
+  outW = std::max(1, (int)(crop.w * srcW));
+  outH = std::max(1, (int)(crop.h * srcH));
+
+  std::vector<uint8_t> cropped(outW * outH * 3);
+  for (int y = 0; y < outH; ++y) {
+    const int srcRow = std::clamp(cropY + y, 0, srcH - 1);
+    const int dstOff = y * outW * 3;
+    const int srcOff = (srcRow * srcW + std::clamp(cropX, 0, srcW - 1)) * 3;
+    const int copyW  = std::min(outW, srcW - std::clamp(cropX, 0, srcW - 1));
+    if (copyW > 0) {
+      std::copy_n(src.begin() + srcOff, copyW * 3, cropped.begin() + dstOff);
+    }
+  }
+  if (crop.angleDeg != 0.f) {
+    cropped = rotateCropBuffer(cropped, outW, outH, crop.angleDeg);
+  }
+  return cropped;
 }
 
 }  // namespace util
