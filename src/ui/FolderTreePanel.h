@@ -14,6 +14,7 @@ class FolderTreePanel {
   explicit FolderTreePanel(catalog::PhotoRepository& repo);
 
   void setOnSelect(SelectCb cb) { onSelect_ = std::move(cb); }
+  void setSelectedFolder(int64_t id) { selectedFolder_ = id; }
 
   // Refresh folder/volume list from DB
   void refresh();

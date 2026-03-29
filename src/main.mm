@@ -141,9 +141,11 @@ static void openOrSwitchEditMode(ui::FullscreenView& fullscreen,
 }
 
 static void applyFilterMode(ui::FilterBar& filterBar, ui::GridView& grid,
-                             ui::FolderTreePanel& folderPanel, ui::FilterMode mode) {
+                             ui::FolderTreePanel& folderPanel,
+                             catalog::PhotoRepository& repo, ui::FilterMode mode) {
   filterBar.setMode(mode);
   grid.loadFolder(folderPanel.selectedFolder(), mode);
+  repo.setSetting("last_filter_mode", std::to_string(static_cast<int>(mode)));
 }
 
 static void setupThumbMissCallback(RenderCtx& ctx, util::ThreadPool& thumbPool) {
@@ -216,6 +218,7 @@ static void setupThumbMissCallback(RenderCtx& ctx, util::ThreadPool& thumbPool) 
 static void wireUiCallbacks(RenderCtx& ctx) {
   ctx.folderPanel.setOnSelect([&](int64_t fid) {
     ctx.grid.loadFolder(fid, ctx.filterBar.mode());
+    ctx.repo.setSetting("last_folder_id", std::to_string(fid));
   });
 
   // catalog.pick callback: reload grid after pick state changes.
@@ -366,10 +369,10 @@ static void renderMenuBar(RenderCtx& ctx) {
     const bool isAll    = (ctx.filterBar.mode() == ui::FilterMode::All);
     const bool isPicked = (ctx.filterBar.mode() == ui::FilterMode::Picked);
     if (ImGui::MenuItem("All Photos", nullptr, isAll)) {
-      applyFilterMode(ctx.filterBar, ctx.grid, ctx.folderPanel, ui::FilterMode::All);
+      applyFilterMode(ctx.filterBar, ctx.grid, ctx.folderPanel, ctx.repo, ui::FilterMode::All);
     }
     if (ImGui::MenuItem("Picked Only", nullptr, isPicked)) {
-      applyFilterMode(ctx.filterBar, ctx.grid, ctx.folderPanel, ui::FilterMode::Picked);
+      applyFilterMode(ctx.filterBar, ctx.grid, ctx.folderPanel, ctx.repo, ui::FilterMode::Picked);
     }
     ImGui::EndMenu();
   }
@@ -404,6 +407,8 @@ static void renderPhotosPanel(RenderCtx& ctx) {
   ImGui::Begin("Photos");
   if (ctx.filterBar.render()) {
     ctx.grid.loadFolder(ctx.folderPanel.selectedFolder(), ctx.filterBar.mode());
+    ctx.repo.setSetting("last_filter_mode",
+                        std::to_string(static_cast<int>(ctx.filterBar.mode())));
   }
   if (ctx.grid.selectionCount() >= 2) {
     ImGui::SameLine();
@@ -618,7 +623,16 @@ int main(int /*argc*/, char** /*argv*/) {
                 thumbMtx, thumbResQ, registry};
 
   folderPanel.refresh();
-  grid.loadFolder(0, ui::FilterMode::All);
+  // Restore last session state
+  const int64_t lastFolder = static_cast<int64_t>(
+      std::stoll(repo.getSetting("last_folder_id", "0")));
+  const ui::FilterMode lastFilter =
+      std::stoi(repo.getSetting("last_filter_mode", "0")) == 1
+          ? ui::FilterMode::Picked
+          : ui::FilterMode::All;
+  folderPanel.setSelectedFolder(lastFolder);
+  filterBar.setMode(lastFilter);
+  grid.loadFolder(lastFolder, lastFilter);
 
   setupThumbMissCallback(ctx, thumbPool);
   wireUiCallbacks(ctx);
