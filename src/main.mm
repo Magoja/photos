@@ -331,7 +331,9 @@ static void processGlobalHotkeys(RenderCtx& ctx) {
   const int64_t selId = ctx.grid.selectedId();
   if (selId <= 0) { return; }
 
-  if (ImGui::IsKeyPressed(ImGuiKey_F) && !ctx.fullscreen.isOpen()) {
+  if (ctx.fullscreen.isOpen()) { return; }
+
+  if (ImGui::IsKeyPressed(ImGuiKey_F)) {
     ctx.editView.close();
     std::vector<int64_t> ids = ctx.repo.queryAll(false);
     ctx.fullscreen.setPhotoList(ids, selId);
@@ -343,7 +345,7 @@ static void processGlobalHotkeys(RenderCtx& ctx) {
   if (ImGui::IsKeyPressed(ImGuiKey_R)) {
     openOrSwitchEditMode(ctx.fullscreen, ctx.editView, selId, ui::EditMode::Crop);
   }
-  if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent) && !ctx.fullscreen.isOpen()) { togglePickSelection(ctx); }
+  if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent)) { togglePickSelection(ctx); }
   if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))   { ctx.grid.navigatePrimary(-1); }
   if (ImGui::IsKeyPressed(ImGuiKey_RightArrow))  { ctx.grid.navigatePrimary(+1); }
   if (ImGui::IsKeyPressed(ImGuiKey_UpArrow))     { ctx.grid.navigatePrimary(-ctx.grid.columnCount()); }
