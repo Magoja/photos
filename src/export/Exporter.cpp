@@ -12,6 +12,7 @@
 #include <cstring>
 
 namespace fs = std::filesystem;
+
 using namespace catalog;
 
 namespace export_ns {
@@ -329,7 +330,7 @@ static std::vector<uint8_t> injectExifApp1(const std::vector<uint8_t>& jpeg,
 
 // ── Exporter ──────────────────────────────────────────────────────────────────
 
-bool Exporter::exportOne(const PhotoRecord& rec, const std::string& destDir) {
+bool Exporter::exportOne(const PhotoRecord& rec, const fs::path& destPath) {
   const std::string srcPath = repo_.fullPathFor(rec.folderId, rec.filename);
 
   // 1. Full-res decode using LibRaw (heap-allocated: LibRaw is ~750 KB on stack)
@@ -380,11 +381,7 @@ bool Exporter::exportOne(const PhotoRecord& rec, const std::string& destDir) {
   const auto exifPayload = buildExifPayload(rec);
   const auto output = injectExifApp1(jpeg, exifPayload);
 
-  // 6. Write output file: {captureTime_date}_{stem}.jpg
-  const std::string stem = fs::path(rec.filename).stem().string();
-  const std::string date = rec.captureTime.size() >= 10 ? rec.captureTime.substr(0, 10) : "unknown";
-  const fs::path destPath = fs::path(destDir) / (date + "_" + stem + ".jpg");
-
+  // 6. Write output file
   std::ofstream ofs(destPath, std::ios::binary);
   if (!ofs) {
     spdlog::warn("Export: cannot write {}", destPath.string());
@@ -408,21 +405,32 @@ void Exporter::run(std::vector<int64_t> ids) {
   }
 
   int exported = 0, errors = 0;
+  bool overwriteAll = false;
+  bool skipAll      = false;
+
   for (int i = 0; i < static_cast<int>(ids.size()); ++i) {
-    if (cancelled_) {
-      break;
-    }
-    if (progressCb_) {
-      progressCb_(i, static_cast<int>(ids.size()));
-    }
+    if (cancelled_) { break; }
+    if (progressCb_) { progressCb_(i, static_cast<int>(ids.size())); }
 
     const auto rec = repo_.findById(ids[i]);
-    if (!rec) {
-      ++errors;
-      continue;
+    if (!rec) { ++errors; continue; }
+
+    const std::string stem = fs::path(rec->filename).stem().string();
+    const fs::path destPath = fs::path(preset_.targetPath) / (stem + ".jpg");
+
+    if (fs::exists(destPath)) {
+      if (skipAll) { continue; }
+      if (!overwriteAll) {
+        const util::OverwriteChoice choice = conflictCb_
+            ? conflictCb_(destPath.filename().string())
+            : util::OverwriteChoice::Skip;
+        if (choice == util::OverwriteChoice::SkipAll) { skipAll = true; continue; }
+        if (choice == util::OverwriteChoice::Skip)    { continue; }
+        if (choice == util::OverwriteChoice::OverwriteAll) { overwriteAll = true; }
+      }
     }
 
-    if (exportOne(*rec, preset_.targetPath)) {
+    if (exportOne(*rec, destPath)) {
       ++exported;
     } else {
       ++errors;

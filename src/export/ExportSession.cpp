@@ -1,5 +1,6 @@
 #include "export/ExportSession.h"
 #include "export/ExportPreset.h"
+#include "util/Platform.h"
 
 namespace export_ns {
 
@@ -32,6 +33,9 @@ bool ExportSession::start(std::vector<int64_t> ids, std::string targetPath, int 
     exportedCount_ = exp;
     errorCount_    = err;
     finished_      = true;
+  });
+  exporter_->setConflictCallback([](const std::string& filename) {
+    return util::askOverwriteFile(filename);
   });
   exporter_->start(ids);
   return true;
