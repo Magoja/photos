@@ -335,8 +335,7 @@ static void processGlobalHotkeys(RenderCtx& ctx) {
 
   if (ImGui::IsKeyPressed(ImGuiKey_F)) {
     ctx.editView.close();
-    std::vector<int64_t> ids = ctx.repo.queryAll(false);
-    ctx.fullscreen.setPhotoList(ids, selId);
+    ctx.fullscreen.setPhotoList(ctx.grid.photoIds(), selId);
     ctx.fullscreen.open(selId);
   }
   if (ImGui::IsKeyPressed(ImGuiKey_D)) {

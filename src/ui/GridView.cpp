@@ -24,6 +24,10 @@ void GridView::reload() {
     (folderId_ == 0) ? repo_.queryAll(pickedOnly) : repo_.queryByFolder(folderId_, pickedOnly);
   requested_.clear();
 
+  const auto pickedVec =
+    (folderId_ == 0) ? repo_.queryAll(true) : repo_.queryByFolder(folderId_, true);
+  pickedIds_ = std::unordered_set<int64_t>(pickedVec.begin(), pickedVec.end());
+
   thumbMeta_.clear();
   const auto raw = repo_.queryThumbMeta(folderId_, pickedOnly);
   for (const auto& [id, paths] : raw) {
@@ -252,6 +256,13 @@ void GridView::render() {
       } else if (isOtherSel) {
         dl->AddRect(cellPos, {cellPos.x + cellW, cellPos.y + cellH}, IM_COL32(80, 160, 255, 255),
                     0.f, 0, 2.f);
+      }
+
+      if (pickedIds_.count(pid)) {
+        const ImVec2 badgeMin = {cellPos.x + 2.f, cellPos.y + 2.f};
+        const ImVec2 badgeMax = {badgeMin.x + 16.f, badgeMin.y + 16.f};
+        dl->AddRectFilled(badgeMin, badgeMax, IM_COL32(220, 170, 20, 210), 3.f);
+        dl->AddText({badgeMin.x + 2.f, badgeMin.y + 1.f}, IM_COL32(255, 255, 255, 255), "\xe2\x98\x85");
       }
 
       if (!repo_.libraryRootExists()) {

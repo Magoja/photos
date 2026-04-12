@@ -241,6 +241,7 @@ void FullscreenView::handleNavKeys() {
 
   if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent) && currentId_ > 0) {
     togglePickCurrentPhoto(currentId_);
+    navigate(+1);
   }
 
 }

@@ -58,6 +58,7 @@ class GridView {
   size_t selectionCount() const { return (primaryId_ > 0 ? 1 : 0) + selectedIds_.size(); }
 
   size_t photoCount() const { return photoIds_.size(); }
+  const std::vector<int64_t>& photoIds() const { return photoIds_; }
 
   // Async: call from main thread when a texture decode completes
   void onThumbReady(int64_t photoId, const std::vector<uint8_t>& jpegBytes);
@@ -72,6 +73,7 @@ class GridView {
 
   std::vector<int64_t> photoIds_;
   std::unordered_set<int64_t> requested_;  // IDs for which thumb load was requested
+  std::unordered_set<int64_t> pickedIds_;  // IDs with picked=1 (refreshed on reload)
   int64_t folderId_ = 0;
   FilterMode filter_ = FilterMode::All;
 
