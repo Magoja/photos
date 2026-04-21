@@ -356,7 +356,7 @@ void FullscreenView::drawStatusOverlay(ImDrawList* dl, ImVec2 scrSz) const {
   char info[256];
   std::snprintf(info, sizeof(info), "%s  |  %dx%d  |  %s  |  %s  [%d/%d]", rec->filename.c_str(),
                 rec->widthPx, rec->heightPx, rec->captureTime.c_str(),
-                rec->picked ? "★ Picked" : "", currentIdx_ + 1, (int)photoIds_.size());
+                rec->picked ? "* Picked" : "", currentIdx_ + 1, (int)photoIds_.size());
   dl->AddText(font, fs, {10.f, scrSz.y - fs - 10.f}, IM_COL32_WHITE, info);
 }
 

@@ -262,7 +262,7 @@ void GridView::render() {
         const ImVec2 badgeMin = {cellPos.x + 2.f, cellPos.y + 2.f};
         const ImVec2 badgeMax = {badgeMin.x + 16.f, badgeMin.y + 16.f};
         dl->AddRectFilled(badgeMin, badgeMax, IM_COL32(220, 170, 20, 210), 3.f);
-        dl->AddText({badgeMin.x + 2.f, badgeMin.y + 1.f}, IM_COL32(255, 255, 255, 255), "\xe2\x98\x85");
+        dl->AddText({badgeMin.x + 2.f, badgeMin.y + 1.f}, IM_COL32(255, 255, 255, 255), "*");
       }
 
       if (!repo_.libraryRootExists()) {
