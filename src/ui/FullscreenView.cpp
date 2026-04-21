@@ -84,7 +84,6 @@ void FullscreenView::startDecodeForCurrent() {
   // no decode needed; crop UV is also already applied (full {0,0,1,1}).
   const auto rec = repo_.findById(currentId_);
   if (!rec) { return; }
-  if (rec->thumbPath.find("thumbs_edit") != std::string::npos) { return; }
 
   const std::string srcPath = repo_.fullPathFor(rec->folderId, rec->filename);
   if (srcPath.empty()) { return; }
