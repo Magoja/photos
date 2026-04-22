@@ -145,20 +145,59 @@ std::vector<uint8_t> cropAndRotatePixels(const std::vector<uint8_t>& src,
   outW = std::max(1, (int)(crop.w * srcW));
   outH = std::max(1, (int)(crop.h * srcH));
 
-  std::vector<uint8_t> cropped(outW * outH * 3);
+  if (crop.angleDeg == 0.f) {
+    std::vector<uint8_t> result(outW * outH * 3);
+    for (int y = 0; y < outH; ++y) {
+      const int srcRow = std::clamp(cropY + y, 0, srcH - 1);
+      const int dstOff = y * outW * 3;
+      const int srcOff = (srcRow * srcW + std::clamp(cropX, 0, srcW - 1)) * 3;
+      const int copyW  = std::min(outW, srcW - std::clamp(cropX, 0, srcW - 1));
+      if (copyW > 0) {
+        std::copy_n(src.begin() + srcOff, copyW * 3, result.begin() + dstOff);
+      }
+    }
+    return result;
+  }
+
+  // Single-pass rotate-then-crop: for each output pixel, find its position in
+  // full-image rotated space, then inverse-rotate around the full image center
+  // to sample from the original. This gives the rotation access to all source
+  // pixels, preventing edge-stretching and content loss at crop corners.
+  const float rad  = crop.angleDeg * (float)M_PI / 180.f;
+  const float cosA = std::cos(rad);
+  const float sinA = std::sin(rad);
+  const float fcx  = srcW * 0.5f;
+  const float fcy  = srcH * 0.5f;
+
+  std::vector<uint8_t> result(outW * outH * 3);
   for (int y = 0; y < outH; ++y) {
-    const int srcRow = std::clamp(cropY + y, 0, srcH - 1);
-    const int dstOff = y * outW * 3;
-    const int srcOff = (srcRow * srcW + std::clamp(cropX, 0, srcW - 1)) * 3;
-    const int copyW  = std::min(outW, srcW - std::clamp(cropX, 0, srcW - 1));
-    if (copyW > 0) {
-      std::copy_n(src.begin() + srcOff, copyW * 3, cropped.begin() + dstOff);
+    for (int x = 0; x < outW; ++x) {
+      const float dx = (x + cropX) - fcx;
+      const float dy = (y + cropY) - fcy;
+      const float sx = cosA * dx + sinA * dy + fcx;
+      const float sy = -sinA * dx + cosA * dy + fcy;
+
+      const int x0 = (int)sx, y0 = (int)sy;
+      const float fx = sx - x0, fy = sy - y0;
+      auto sample = [&](int px, int py) -> std::array<float, 3> {
+        px = std::clamp(px, 0, srcW - 1);
+        py = std::clamp(py, 0, srcH - 1);
+        const int idx = (py * srcW + px) * 3;
+        return {(float)src[idx], (float)src[idx+1], (float)src[idx+2]};
+      };
+      const auto s00 = sample(x0,   y0);
+      const auto s10 = sample(x0+1, y0);
+      const auto s01 = sample(x0,   y0+1);
+      const auto s11 = sample(x0+1, y0+1);
+      const int outIdx = (y * outW + x) * 3;
+      for (int c = 0; c < 3; ++c) {
+        const float val = s00[c]*(1.f-fx)*(1.f-fy) + s10[c]*fx*(1.f-fy)
+                        + s01[c]*(1.f-fx)*fy        + s11[c]*fx*fy;
+        result[outIdx+c] = (uint8_t)std::clamp(val, 0.f, 255.f);
+      }
     }
   }
-  if (crop.angleDeg != 0.f) {
-    cropped = rotateCropBuffer(cropped, outW, outH, crop.angleDeg);
-  }
-  return cropped;
+  return result;
 }
 
 }  // namespace util
