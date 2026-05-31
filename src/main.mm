@@ -54,6 +54,7 @@
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -105,6 +106,7 @@ struct RenderCtx {
   ui::SettingsPanel& settingsPanel;
   std::mutex& thumbMtx;
   std::queue<ThumbResult>& thumbResQ;
+  util::ThreadPool& thumbPool;
   const command::CommandRegistry& registry;
   // Deferred clear-cache: set by Settings button, executed at the start of the
   // next frame before any draw calls to avoid freeing textures mid-frame.
@@ -141,12 +143,15 @@ static void openOrSwitchEditMode(ui::FullscreenView& fullscreen, ui::EditView& e
   editView.setMode(mode);
 }
 
-static void applyFilterMode(ui::FilterBar& filterBar, ui::GridView& grid,
-                            ui::FolderTreePanel& folderPanel, catalog::PhotoRepository& repo,
-                            ui::FilterMode mode) {
-  filterBar.setMode(mode);
-  grid.loadFolder(folderPanel.selectedFolder(), mode);
-  repo.setSetting("last_filter_mode", std::to_string(static_cast<int>(mode)));
+static void switchFolderView(RenderCtx& ctx, int64_t folderId, ui::FilterMode mode) {
+  ctx.thumbPool.clearQueue();
+  ctx.grid.loadFolder(folderId, mode);
+}
+
+static void applyFilterMode(RenderCtx& ctx, ui::FilterMode mode) {
+  ctx.filterBar.setMode(mode);
+  switchFolderView(ctx, ctx.folderPanel.selectedFolder(), mode);
+  ctx.repo.setSetting("last_filter_mode", std::to_string(static_cast<int>(mode)));
 }
 
 static void loadMicroThumb(int64_t pid, const std::string& microPath, RenderCtx& ctx) {
@@ -234,9 +239,9 @@ static void generateAndServeThumb(int64_t pid, RenderCtx& ctx) {
   }
 }
 
-static void setupThumbMissCallback(RenderCtx& ctx, util::ThreadPool& thumbPool) {
+static void setupThumbMissCallback(RenderCtx& ctx) {
   ctx.grid.setThumbMissCallback([&](int64_t pid, std::string path, std::string microPath) {
-    thumbPool.submit([pid, path = std::move(path), microPath = std::move(microPath), &ctx]() {
+    ctx.thumbPool.submit([pid, path = std::move(path), microPath = std::move(microPath), &ctx]() {
       loadMicroThumb(pid, microPath, ctx);
       if (!loadStandardThumb(pid, path, ctx)) {
         generateAndServeThumb(pid, ctx);
@@ -247,7 +252,7 @@ static void setupThumbMissCallback(RenderCtx& ctx, util::ThreadPool& thumbPool) 
 
 static void wireUiCallbacks(RenderCtx& ctx) {
   ctx.folderPanel.setOnSelect([&](int64_t fid) {
-    ctx.grid.loadFolder(fid, ctx.filterBar.mode());
+    switchFolderView(ctx, fid, ctx.filterBar.mode());
     ctx.repo.setSetting("last_folder_id", std::to_string(fid));
   });
 
@@ -286,9 +291,20 @@ static void drainThumbQueue(RenderCtx& ctx) {
     std::lock_guard lk(ctx.thumbMtx);
     std::swap(local, ctx.thumbResQ);
   }
+  // Build a set of photo IDs currently in view so stale results from a
+  // previous folder (tasks that completed after loadFolder was called) are
+  // discarded rather than uploaded into the wrong slot.
+  const auto& ids = ctx.grid.photoIds();
+  const std::unordered_set<int64_t> inView(ids.begin(), ids.end());
+
   while (!local.empty()) {
     auto& r = local.front();
-    ctx.texMgr.uploadRgba(r.pid, r.rgba, r.width, r.height);
+    const int64_t baseId = r.pid >= ui::GridView::kMicroOffset
+                             ? r.pid - ui::GridView::kMicroOffset
+                             : r.pid;
+    if (inView.count(baseId)) {
+      ctx.texMgr.uploadRgba(r.pid, r.rgba, r.width, r.height);
+    }
     local.pop();
   }
 }
@@ -426,10 +442,10 @@ static void renderMenuBar(RenderCtx& ctx) {
     const bool isAll = (ctx.filterBar.mode() == ui::FilterMode::All);
     const bool isPicked = (ctx.filterBar.mode() == ui::FilterMode::Picked);
     if (ImGui::MenuItem("All Photos", nullptr, isAll)) {
-      applyFilterMode(ctx.filterBar, ctx.grid, ctx.folderPanel, ctx.repo, ui::FilterMode::All);
+      applyFilterMode(ctx, ui::FilterMode::All);
     }
     if (ImGui::MenuItem("Picked Only", nullptr, isPicked)) {
-      applyFilterMode(ctx.filterBar, ctx.grid, ctx.folderPanel, ctx.repo, ui::FilterMode::Picked);
+      applyFilterMode(ctx, ui::FilterMode::Picked);
     }
     ImGui::EndMenu();
   }
@@ -463,7 +479,7 @@ static void renderLibraryRootModal(RenderCtx& ctx) {
 static void renderPhotosPanel(RenderCtx& ctx) {
   ImGui::Begin("Photos");
   if (ctx.filterBar.render()) {
-    ctx.grid.loadFolder(ctx.folderPanel.selectedFolder(), ctx.filterBar.mode());
+    switchFolderView(ctx, ctx.folderPanel.selectedFolder(), ctx.filterBar.mode());
     ctx.repo.setSetting("last_filter_mode", std::to_string(static_cast<int>(ctx.filterBar.mode())));
   }
   if (ctx.grid.selectionCount() >= 2) {
@@ -688,7 +704,7 @@ int main(int /*argc*/, char** /*argv*/) {
   bool running = true;
   RenderCtx ctx{running,     libraryRoot,   thumbDir,  db,         repo,     thumbCache, texMgr,
                 grid,        folderPanel,   filterBar, fullscreen, editView, importDlg,  exportDlg,
-                metaSyncDlg, settingsPanel, thumbMtx,  thumbResQ,  registry};
+                metaSyncDlg, settingsPanel, thumbMtx,  thumbResQ,  thumbPool, registry};
 
   folderPanel.refresh();
   // Restore last session state
@@ -701,7 +717,7 @@ int main(int /*argc*/, char** /*argv*/) {
   filterBar.setMode(lastFilter);
   grid.loadFolder(lastFolder, lastFilter);
 
-  setupThumbMissCallback(ctx, thumbPool);
+  setupThumbMissCallback(ctx);
   wireUiCallbacks(ctx);
 
   // ── Volume watcher ────────────────────────────────────────────────────────

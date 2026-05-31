@@ -36,6 +36,8 @@ class ThreadPool {
 
   void waitAll();
   void stop();
+  // Discard all pending (not yet started) tasks. Already-running tasks complete normally.
+  void clearQueue();
   size_t numThreads() const { return workers_.size(); }
 
  private:

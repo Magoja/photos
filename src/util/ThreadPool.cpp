@@ -49,6 +49,11 @@ void ThreadPool::stop() {
   }
 }
 
+void ThreadPool::clearQueue() {
+  std::lock_guard lk(mutex_);
+  queue_ = {};
+}
+
 void ThreadPool::waitAll() {
   std::unique_lock lk(mutex_);
   cvIdle_.wait(lk, [this] { return queue_.empty() && active_ == 0; });
