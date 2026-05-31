@@ -131,8 +131,7 @@ bool TextureManager::decodeJpeg(const std::vector<uint8_t>& jpegBytes,
   return true;
 }
 
-bool TextureManager::uploadRgba(int64_t photoId, const std::vector<uint8_t>& rgba, int w,
-                                int h) {
+bool TextureManager::uploadRgba(int64_t photoId, const std::vector<uint8_t>& rgba, int w, int h) {
   if (rgba.empty() || w <= 0 || h <= 0) {
     return false;
   }
@@ -224,7 +223,9 @@ void TextureManager::evictAll() {
   std::lock_guard lk(mutex_);
   for (auto& [pid, pair] : lruMap_) {
     id<MTLTexture> tex = (id<MTLTexture>)pair.second.texture;
-    if (tex) { [tex release]; }
+    if (tex) {
+      [tex release];
+    }
   }
   lruMap_.clear();
   lruList_.clear();

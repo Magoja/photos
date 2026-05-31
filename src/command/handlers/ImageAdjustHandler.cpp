@@ -23,14 +23,24 @@ CommandResult ImageAdjustHandler::execute(nlohmann::json params) {
   }
 
   auto settings = catalog::EditSettings::fromJson(rec->editSettings);
-  if (params.contains("exposure"))    { settings.exposure    = params["exposure"].get<float>(); }
-  if (params.contains("temperature")) { settings.temperature = params["temperature"].get<float>(); }
-  if (params.contains("contrast"))    { settings.contrast    = params["contrast"].get<float>(); }
-  if (params.contains("saturation"))  { settings.saturation  = params["saturation"].get<float>(); }
+  if (params.contains("exposure")) {
+    settings.exposure = params["exposure"].get<float>();
+  }
+  if (params.contains("temperature")) {
+    settings.temperature = params["temperature"].get<float>();
+  }
+  if (params.contains("contrast")) {
+    settings.contrast = params["contrast"].get<float>();
+  }
+  if (params.contains("saturation")) {
+    settings.saturation = params["saturation"].get<float>();
+  }
 
   repo_.updateEditSettings(id, settings.toJson());
   repo_.updateThumb(id, "", 0, 0, 0);
-  if (adjustedCb_) { adjustedCb_(id); }
+  if (adjustedCb_) {
+    adjustedCb_(id);
+  }
   return success();
 }
 

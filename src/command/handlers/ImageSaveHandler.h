@@ -12,12 +12,11 @@ namespace command {
 // savedCb (optional): called with the photo id after DB write succeeds.
 class ImageSaveHandler : public ICommandHandler {
  public:
-  ImageSaveHandler(catalog::PhotoRepository& repo,
-                   std::function<void(int64_t)> savedCb)
-      : repo_(repo), savedCb_(std::move(savedCb)) {}
+  ImageSaveHandler(catalog::PhotoRepository& repo, std::function<void(int64_t)> savedCb)
+    : repo_(repo), savedCb_(std::move(savedCb)) {}
 
   ValidationResult validate(const nlohmann::json& params) const override;
-  CommandResult    execute(nlohmann::json params) override;
+  CommandResult execute(nlohmann::json params) override;
 
  private:
   catalog::PhotoRepository& repo_;

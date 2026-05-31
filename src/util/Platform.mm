@@ -116,19 +116,25 @@ OverwriteChoice askOverwriteFile(const std::string& filename) {
   dispatch_sync(dispatch_get_main_queue(), ^{
     NSAlert* alert = [[NSAlert alloc] init];
     alert.messageText = @"File Already Exists";
-    NSString* info = [NSString stringWithFormat:
-        @"\"%s\" already exists in the destination folder. What would you like to do?",
-        filename.c_str()];
+    NSString* info =
+      [NSString stringWithFormat:
+                  @"\"%s\" already exists in the destination folder. What would you like to do?",
+                  filename.c_str()];
     alert.informativeText = info;
     [alert addButtonWithTitle:@"Overwrite"];
     [alert addButtonWithTitle:@"Overwrite All"];
     [alert addButtonWithTitle:@"Skip"];
     [alert addButtonWithTitle:@"Skip All"];
     const NSModalResponse resp = [alert runModal];
-    if      (resp == NSAlertFirstButtonReturn)  { choice = OverwriteChoice::Overwrite; }
-    else if (resp == NSAlertSecondButtonReturn) { choice = OverwriteChoice::OverwriteAll; }
-    else if (resp == NSAlertThirdButtonReturn)  { choice = OverwriteChoice::Skip; }
-    else                                        { choice = OverwriteChoice::SkipAll; }
+    if (resp == NSAlertFirstButtonReturn) {
+      choice = OverwriteChoice::Overwrite;
+    } else if (resp == NSAlertSecondButtonReturn) {
+      choice = OverwriteChoice::OverwriteAll;
+    } else if (resp == NSAlertThirdButtonReturn) {
+      choice = OverwriteChoice::Skip;
+    } else {
+      choice = OverwriteChoice::SkipAll;
+    }
   });
   return choice;
 }

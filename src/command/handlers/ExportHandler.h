@@ -16,7 +16,7 @@ class ExportHandler : public ICommandHandler {
   explicit ExportHandler(export_ns::ExportSession& session) : session_(session) {}
 
   ValidationResult validate(const nlohmann::json& params) const override;
-  CommandResult    execute(nlohmann::json params) override;
+  CommandResult execute(nlohmann::json params) override;
 
  private:
   export_ns::ExportSession& session_;

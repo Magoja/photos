@@ -23,7 +23,9 @@ CommandResult ImageSaveHandler::execute(nlohmann::json params) {
   const auto s = catalog::EditSettings::fromJson(params["settings"].dump());
   repo_.updateEditSettings(id, s.toJson());
   repo_.updateThumb(id, "", 0, 0, 0);
-  if (savedCb_) { savedCb_(id); }
+  if (savedCb_) {
+    savedCb_(id);
+  }
   return success();
 }
 

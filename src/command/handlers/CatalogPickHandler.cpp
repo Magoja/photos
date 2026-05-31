@@ -13,8 +13,8 @@ ValidationResult CatalogPickHandler::validate(const nlohmann::json& params) cons
 }
 
 CommandResult CatalogPickHandler::execute(nlohmann::json params) {
-  const int64_t id     = params["id"].get<int64_t>();
-  const int     picked = params["picked"].get<int>();
+  const int64_t id = params["id"].get<int64_t>();
+  const int picked = params["picked"].get<int>();
 
   const auto rec = repo_.findById(id);
   if (!rec) {
@@ -22,7 +22,9 @@ CommandResult CatalogPickHandler::execute(nlohmann::json params) {
   }
 
   repo_.updatePicked(id, picked);
-  if (pickedCb_) { pickedCb_(id, picked); }
+  if (pickedCb_) {
+    pickedCb_(id, picked);
+  }
   return success();
 }
 

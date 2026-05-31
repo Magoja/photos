@@ -12,17 +12,17 @@ namespace {
 
 // Decode image to RGBA using the unified ImageLoader (LibRaw → JPEG fallback),
 // apply tone adjustments, and signal completion via readyFlag.
-static void decodePhotoToRgba(const std::string& filePath,
-                               const catalog::EditSettings& es,
-                               std::atomic<bool>& cancelFlag,
-                               std::vector<uint8_t>& outRgba, int& outW, int& outH,
-                               std::atomic<bool>& readyFlag) {
+static void decodePhotoToRgba(const std::string& filePath, const catalog::EditSettings& es,
+                              std::atomic<bool>& cancelFlag, std::vector<uint8_t>& outRgba,
+                              int& outW, int& outH, std::atomic<bool>& readyFlag) {
   const auto img = util::loadImageAsRgb(filePath, /*maxEdge=*/2000);
   if (!img.ok()) {
     readyFlag = true;
     return;
   }
-  if (cancelFlag.load()) { return; }
+  if (cancelFlag.load()) {
+    return;
+  }
 
   const auto adjusted = util::applyAdjustments(img.pixels, img.width, img.height, es);
   outRgba = util::rgbToRgba(adjusted, img.width * img.height);
@@ -54,8 +54,8 @@ void FullscreenView::cancelDecode() {
     decodeThread_.join();
   }
   decodeCancel_ = false;
-  decodeReady_  = false;
-  decoding_     = false;
+  decodeReady_ = false;
+  decoding_ = false;
   pendingRgba_.clear();
 }
 
@@ -63,15 +63,19 @@ void FullscreenView::startDecodeForCurrent() {
   // Pre-cropped thumbnails already contain correct tone from the save pipeline —
   // no decode needed; crop UV is also already applied (full {0,0,1,1}).
   const auto rec = repo_.findById(currentId_);
-  if (!rec) { return; }
+  if (!rec) {
+    return;
+  }
 
   const std::string srcPath = repo_.fullPathFor(rec->folderId, rec->filename);
-  if (srcPath.empty()) { return; }
+  if (srcPath.empty()) {
+    return;
+  }
 
   const catalog::EditSettings es = catalog::EditSettings::fromJson(rec->editSettings);
   decodingForId_ = currentId_;
-  decoding_      = true;
-  decodeReady_   = false;
+  decoding_ = true;
+  decodeReady_ = false;
 
   decodeThread_ = std::thread([this, srcPath, es]() {
     decodePhotoToRgba(srcPath, es, decodeCancel_, pendingRgba_, pendingW_, pendingH_, decodeReady_);
@@ -81,7 +85,7 @@ void FullscreenView::startDecodeForCurrent() {
 void FullscreenView::pollDecodeResult() {
   if (decoding_ && decodeReady_.load()) {
     decodeThread_.join();
-    decoding_    = false;
+    decoding_ = false;
     decodeReady_ = false;
 
     if (!pendingRgba_.empty()) {
@@ -95,7 +99,7 @@ void FullscreenView::pollDecodeResult() {
   // Poll prefetch completion
   if (prefetching_ && prefetchReady_.load()) {
     prefetchThread_.join();
-    prefetching_   = false;
+    prefetching_ = false;
     prefetchReady_ = false;
     if (!prefetchRgba_.empty()) {
       texMgr_.uploadRgba(prefetchForId_ + kAdjOffset, prefetchRgba_, prefetchW_, prefetchH_);
@@ -106,37 +110,52 @@ void FullscreenView::pollDecodeResult() {
 }
 
 void FullscreenView::startPrefetch(int targetIdx) {
-  if (prefetching_) { return; }
-  if (targetIdx < 0 || targetIdx >= static_cast<int>(photoIds_.size())) { return; }
+  if (prefetching_) {
+    return;
+  }
+  if (targetIdx < 0 || targetIdx >= static_cast<int>(photoIds_.size())) {
+    return;
+  }
   const int64_t targetId = photoIds_[targetIdx];
-  if (adjCachedIds_.count(targetId)) { return; }  // already cached
+  if (adjCachedIds_.count(targetId)) {
+    return;
+  }  // already cached
 
   const auto rec = repo_.findById(targetId);
-  if (!rec || rec->thumbPath.find("thumbs_edit") != std::string::npos) { return; }
+  if (!rec || rec->thumbPath.find("thumbs_edit") != std::string::npos) {
+    return;
+  }
 
   const std::string srcPath = repo_.fullPathFor(rec->folderId, rec->filename);
-  if (srcPath.empty()) { return; }
+  if (srcPath.empty()) {
+    return;
+  }
 
   const catalog::EditSettings es = catalog::EditSettings::fromJson(rec->editSettings);
-  prefetchForId_  = targetId;
-  prefetching_    = true;
+  prefetchForId_ = targetId;
+  prefetching_ = true;
   prefetchCancel_ = false;
-  prefetchReady_  = false;
+  prefetchReady_ = false;
   prefetchThread_ = std::thread([this, srcPath, es]() mutable {
-    decodePhotoToRgba(srcPath, es, prefetchCancel_, prefetchRgba_, prefetchW_, prefetchH_, prefetchReady_);
+    decodePhotoToRgba(srcPath, es, prefetchCancel_, prefetchRgba_, prefetchW_, prefetchH_,
+                      prefetchReady_);
   });
 }
 
 void FullscreenView::cancelPrefetch() {
   prefetchCancel_ = true;
-  if (prefetchThread_.joinable()) { prefetchThread_.join(); }
-  prefetching_   = false;
+  if (prefetchThread_.joinable()) {
+    prefetchThread_.join();
+  }
+  prefetching_ = false;
   prefetchReady_ = false;
   prefetchRgba_.clear();
 }
 
 void FullscreenView::addToAdjCache(int64_t id) {
-  if (adjCachedIds_.count(id)) { return; }
+  if (adjCachedIds_.count(id)) {
+    return;
+  }
   adjCachedIds_.insert(id);
   adjCacheOrder_.push_back(id);
   while (static_cast<int>(adjCacheOrder_.size()) > kAdjCacheMax) {
@@ -157,7 +176,9 @@ void FullscreenView::setPhotoList(std::vector<int64_t> ids, int64_t currentId) {
 void FullscreenView::open(int64_t photoId) {
   cancelDecode();
   cancelPrefetch();
-  for (const auto id : adjCachedIds_) { texMgr_.evict(id + kAdjOffset); }
+  for (const auto id : adjCachedIds_) {
+    texMgr_.evict(id + kAdjOffset);
+  }
   adjCachedIds_.clear();
   adjCacheOrder_.clear();
   lastDelta_ = 1;
@@ -171,7 +192,9 @@ void FullscreenView::open(int64_t photoId) {
 void FullscreenView::close() {
   cancelDecode();
   cancelPrefetch();
-  for (const auto id : adjCachedIds_) { texMgr_.evict(id + kAdjOffset); }
+  for (const auto id : adjCachedIds_) {
+    texMgr_.evict(id + kAdjOffset);
+  }
   adjCachedIds_.clear();
   adjCacheOrder_.clear();
   open_ = false;
@@ -184,9 +207,13 @@ void FullscreenView::resetView() {
 }
 
 void FullscreenView::navigate(int delta) {
-  if (photoIds_.empty()) { return; }
+  if (photoIds_.empty()) {
+    return;
+  }
   const int newIdx = std::clamp(currentIdx_ + delta, 0, (int)photoIds_.size() - 1);
-  if (newIdx == currentIdx_) { return; }
+  if (newIdx == currentIdx_) {
+    return;
+  }
   lastDelta_ = (delta > 0) ? 1 : -1;
 
   cancelDecode();
@@ -194,7 +221,7 @@ void FullscreenView::navigate(int delta) {
   // Adj texture is kept alive in adjCacheOrder_ — no evict here
 
   currentIdx_ = newIdx;
-  currentId_  = photoIds_[newIdx];
+  currentId_ = photoIds_[newIdx];
   resetView();
 
   if (adjCachedIds_.count(currentId_)) {
@@ -222,7 +249,6 @@ void FullscreenView::handleNavKeys() {
     togglePickCurrentPhoto(currentId_);
     navigate(+1);
   }
-
 }
 
 void FullscreenView::togglePickCurrentPhoto(const int64_t photoId) {
@@ -233,15 +259,16 @@ void FullscreenView::togglePickCurrentPhoto(const int64_t photoId) {
   const int newPicked = rec->picked ? 0 : 1;
 
   if (registry_) {
-    registry_->dispatch("catalog.pick",
-        {{"id", photoId}, {"picked", newPicked}});
+    registry_->dispatch("catalog.pick", {{"id", photoId}, {"picked", newPicked}});
   } else {
     repo_.updatePicked(photoId, newPicked);
-    if (pickChangedCb_) { pickChangedCb_(photoId, newPicked); }
+    if (pickChangedCb_) {
+      pickChangedCb_(photoId, newPicked);
+    }
   }
 
-  toastText_     = newPicked ? "Picked" : "Unpicked";
-  toastVisible_  = true;
+  toastText_ = newPicked ? "Picked" : "Unpicked";
+  toastVisible_ = true;
   toastTimeLeft_ = 1.2f;
 }
 
@@ -267,7 +294,9 @@ void FullscreenView::drawPhoto(ImDrawList* dl, ImVec2 scrSz) const {
   const auto adjTex = texMgr_.get(currentId_ + kAdjOffset);
   const bool hasAdj = adjTex && adjTex != texMgr_.placeholder();
   const auto tex = hasAdj ? adjTex : texMgr_.get(currentId_);
-  if (!tex || tex == texMgr_.placeholder()) { return; }
+  if (!tex || tex == texMgr_.placeholder()) {
+    return;
+  }
 
   ImVec2 uvMin{0.f, 0.f}, uvMax{1.f, 1.f};
   float cropAspect = 1.f;
@@ -295,8 +324,7 @@ void FullscreenView::drawPhoto(ImDrawList* dl, ImVec2 scrSz) const {
     } else {
       // Original camera JPEG — compute aspect from the crop region.
       if (rec->widthPx > 0 && rec->heightPx > 0) {
-        cropAspect = (m.cropW * (float)rec->widthPx) /
-                     (m.cropH * (float)rec->heightPx);
+        cropAspect = (m.cropW * (float)rec->widthPx) / (m.cropH * (float)rec->heightPx);
       } else {
         // Fall back to actual texture dimensions — covers JPEGs with no DB dimensions
         auto [texW, texH] = texMgr_.getSize(currentId_ + kAdjOffset);
@@ -304,8 +332,7 @@ void FullscreenView::drawPhoto(ImDrawList* dl, ImVec2 scrSz) const {
           std::tie(texW, texH) = texMgr_.getSize(currentId_);
         }
         if (texW > 0 && texH > 0) {
-          cropAspect = (m.cropW * static_cast<float>(texW)) /
-                       (m.cropH * static_cast<float>(texH));
+          cropAspect = (m.cropW * static_cast<float>(texW)) / (m.cropH * static_cast<float>(texH));
         }
       }
     }

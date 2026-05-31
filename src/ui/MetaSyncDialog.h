@@ -6,7 +6,9 @@
 #include <functional>
 #include <string>
 
-namespace command { class CommandRegistry; }
+namespace command {
+class CommandRegistry;
+}
 
 namespace ui {
 
@@ -15,7 +17,12 @@ class MetaSyncDialog {
   using DoneCb = std::function<void()>;
 
   // Edited thumbnail ready for upload — drained by main loop before grid.render()
-  struct ThumbUpdate { int64_t id; std::vector<uint8_t> rgba; int w; int h; };
+  struct ThumbUpdate {
+    int64_t id;
+    std::vector<uint8_t> rgba;
+    int w;
+    int h;
+  };
 
   MetaSyncDialog(catalog::PhotoRepository& repo, TextureManager& texMgr);
 
@@ -46,7 +53,7 @@ class MetaSyncDialog {
 
   // Persisted checkbox state between opens (static so they survive re-open)
   bool syncAdjust_ = true;
-  bool syncCrop_   = false;
+  bool syncCrop_ = false;
 
   std::vector<ThumbUpdate> pendingThumbUpdates_;
 

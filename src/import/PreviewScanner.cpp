@@ -24,19 +24,17 @@ PreviewScanner::~PreviewScanner() {
   }
 }
 
-void PreviewScanner::start(const std::string& sourcePath,
-                           ScanProgressCb progressCb,
+void PreviewScanner::start(const std::string& sourcePath, ScanProgressCb progressCb,
                            ItemReadyCb itemCb) {
   if (running_) {
     return;
   }
   cancelled_ = false;
-  running_   = true;
-  thread_    = std::thread([this, sourcePath,
-                            progressCb = std::move(progressCb),
-                            itemCb     = std::move(itemCb)]() mutable {
-    run(std::move(sourcePath), std::move(progressCb), std::move(itemCb));
-  });
+  running_ = true;
+  thread_ = std::thread(
+    [this, sourcePath, progressCb = std::move(progressCb), itemCb = std::move(itemCb)]() mutable {
+      run(std::move(sourcePath), std::move(progressCb), std::move(itemCb));
+    });
 }
 
 void PreviewScanner::cancel() {
@@ -47,7 +45,7 @@ void PreviewScanner::run(std::string sourcePath, ScanProgressCb progressCb, Item
   spdlog::info("PreviewScanner: scanning {}", sourcePath);
 
   const auto files = FileScanner::scan(sourcePath);
-  const int  total = static_cast<int>(files.size());
+  const int total = static_cast<int>(files.size());
   spdlog::info("PreviewScanner: found {} files", total);
 
   int done = 0;
@@ -79,10 +77,10 @@ void PreviewScanner::run(std::string sourcePath, ScanProgressCb progressCb, Item
       auto dec = RawDecoder::decode(sf.path);
 
       PreviewItem item;
-      item.path        = sf.path;
-      item.filename    = fs::path(sf.path).filename().string();
+      item.path = sf.path;
+      item.filename = fs::path(sf.path).filename().string();
       item.captureTime = dec.exif.captureTime;
-      item.thumbJpeg   = std::move(dec.thumbJpeg);
+      item.thumbJpeg = std::move(dec.thumbJpeg);
 
       if (itemCb) {
         itemCb(std::move(item));

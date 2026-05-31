@@ -14,7 +14,7 @@ class ImageCropHandler : public ICommandHandler {
  public:
   explicit ImageCropHandler(catalog::PhotoRepository& repo) : repo_(repo) {}
   ValidationResult validate(const nlohmann::json& params) const override;
-  CommandResult    execute(nlohmann::json params) override;
+  CommandResult execute(nlohmann::json params) override;
 
  private:
   catalog::PhotoRepository& repo_;

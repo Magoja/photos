@@ -38,7 +38,9 @@ void SettingsPanel::render() {
     ImGui::Separator();
     ImGui::Spacing();
     if (ImGui::Button("Clear Preview Cache")) {
-      if (clearCacheCb_) { clearCacheCb_(); }
+      if (clearCacheCb_) {
+        clearCacheCb_();
+      }
     }
     ImGui::SameLine();
     ImGui::TextDisabled("Deletes all cached thumbnails and forces regeneration.");

@@ -13,7 +13,7 @@ namespace ui {
 // ── Construction / destruction ────────────────────────────────────────────────
 
 ImportDialog::ImportDialog(catalog::Database& db, TextureManager& texMgr)
-    : db_(db), texMgr_(texMgr) {}
+  : db_(db), texMgr_(texMgr) {}
 
 ImportDialog::~ImportDialog() {
   cancelAll();
@@ -29,11 +29,11 @@ void ImportDialog::open(const std::string& sourcePath, const std::string& destPa
   importer_.reset();
 
   sourcePath_ = sourcePath;
-  destPath_   = destPath;
-  thumbRoot_  = thumbCacheRoot;
-  copyFiles_  = true;
-  open_       = true;
-  state_      = State::kIdle;
+  destPath_ = destPath;
+  thumbRoot_ = thumbCacheRoot;
+  copyFiles_ = true;
+  open_ = true;
+  state_ = State::kIdle;
 
   previewItems_.clear();
   {
@@ -41,14 +41,14 @@ void ImportDialog::open(const std::string& sourcePath, const std::string& destPa
     pendingItems_.clear();
   }
   selectedIndices_.clear();
-  shiftAnchor_   = -1;
+  shiftAnchor_ = -1;
   nextPreviewId_ = -1;
-  scanDone_      = 0;
-  scanTotal_     = 0;
-  importDone_    = false;
+  scanDone_ = 0;
+  scanTotal_ = 0;
+  importDone_ = false;
 
   totalFiles_ = 0;
-  doneFiles_  = 0;
+  doneFiles_ = 0;
   {
     std::lock_guard lk(progressMtx_);
     currentFile_.clear();
@@ -74,19 +74,23 @@ void ImportDialog::close() {
   cancelAll();
   scanner_.reset();
   importer_.reset();
-  open_  = false;
+  open_ = false;
   state_ = State::kIdle;
 }
 
 // ── cancelAll: unblocks background threads so their destructors can join ──────
 
 void ImportDialog::cancelAll() {
-  if (scanner_)  { scanner_->cancel(); }
-  if (importer_) { importer_->cancel(); }
+  if (scanner_) {
+    scanner_->cancel();
+  }
+  if (importer_) {
+    importer_->cancel();
+  }
   {
     std::lock_guard lk(conflictMtx_);
     conflictResolution_ = import_ns::ConflictResolution::Skip;
-    conflictResolved_   = true;
+    conflictResolved_ = true;
   }
   conflictCv_.notify_all();
 }
@@ -100,22 +104,22 @@ void ImportDialog::startScan() {
     pendingItems_.clear();
   }
   selectedIndices_.clear();
-  shiftAnchor_   = -1;
+  shiftAnchor_ = -1;
   nextPreviewId_ = -1;
-  scanDone_      = 0;
-  scanTotal_     = 0;
+  scanDone_ = 0;
+  scanTotal_ = 0;
 
   scanner_ = std::make_unique<import_ns::PreviewScanner>(db_);
   scanner_->start(
-      sourcePath_,
-      [this](int done, int total) {
-        scanDone_  = done;
-        scanTotal_ = total;
-      },
-      [this](import_ns::PreviewItem item) {
-        std::lock_guard lk(pendingMtx_);
-        pendingItems_.push_back(std::move(item));
-      });
+    sourcePath_,
+    [this](int done, int total) {
+      scanDone_ = done;
+      scanTotal_ = total;
+    },
+    [this](import_ns::PreviewItem item) {
+      std::lock_guard lk(pendingMtx_);
+      pendingItems_.push_back(std::move(item));
+    });
   state_ = State::kScanning;
 }
 
@@ -150,17 +154,17 @@ void ImportDialog::startImport() {
   }
 
   import_ns::ImportOptions opts;
-  opts.sourcePath     = sourcePath_;
-  opts.destPath       = destPath_;
+  opts.sourcePath = sourcePath_;
+  opts.destPath = destPath_;
   opts.thumbCacheRoot = thumbRoot_;
-  opts.copyFiles      = copyFiles_;
-  opts.selectedFiles  = std::move(selectedPaths);
-  opts.conflictCb     = [this](const std::string& fn, const std::string& dir) {
+  opts.copyFiles = copyFiles_;
+  opts.selectedFiles = std::move(selectedPaths);
+  opts.conflictCb = [this](const std::string& fn, const std::string& dir) {
     return handleConflict(fn, dir);
   };
 
   totalFiles_ = 0;
-  doneFiles_  = 0;
+  doneFiles_ = 0;
   importDone_ = false;
   {
     std::lock_guard lk(progressMtx_);
@@ -169,7 +173,7 @@ void ImportDialog::startImport() {
 
   importer_ = std::make_unique<import_ns::Importer>(db_, opts);
   importer_->setProgressCallback([this](int done, int total, const std::string& file) {
-    doneFiles_  = done;
+    doneFiles_ = done;
     totalFiles_ = total;
     std::lock_guard lk(progressMtx_);
     currentFile_ = fs::path(file).filename().string();
@@ -191,7 +195,7 @@ import_ns::ConflictResolution ImportDialog::handleConflict(const std::string& fi
                                                            const std::string& destDir) {
   {
     std::lock_guard lk(conflictMtx_);
-    conflictInfo_     = {filename, destDir};
+    conflictInfo_ = {filename, destDir};
     conflictResolved_ = false;
   }
   conflictPending_ = true;
@@ -205,7 +209,7 @@ void ImportDialog::resolveConflict(const import_ns::ConflictResolution res) {
   {
     std::lock_guard lk(conflictMtx_);
     conflictResolution_ = res;
-    conflictResolved_   = true;
+    conflictResolved_ = true;
   }
   conflictPending_ = false;
   conflictCv_.notify_all();
@@ -214,7 +218,9 @@ void ImportDialog::resolveConflict(const import_ns::ConflictResolution res) {
 // ── Render entry point ────────────────────────────────────────────────────────
 
 void ImportDialog::render() {
-  if (!open_) { return; }
+  if (!open_) {
+    return;
+  }
 
   ImGui::SetNextWindowSize({900, 680}, ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver,
@@ -235,11 +241,21 @@ void ImportDialog::render() {
   }
 
   switch (state_) {
-    case State::kIdle:      renderIdle();      break;
-    case State::kScanning:  renderScanning();  break;
-    case State::kPreview:   renderPreview();   break;
-    case State::kImporting: renderImporting(); break;
-    case State::kDone:      renderDone();      break;
+    case State::kIdle:
+      renderIdle();
+      break;
+    case State::kScanning:
+      renderScanning();
+      break;
+    case State::kPreview:
+      renderPreview();
+      break;
+    case State::kImporting:
+      renderImporting();
+      break;
+    case State::kDone:
+      renderDone();
+      break;
   }
 
   ImGui::End();
@@ -270,24 +286,33 @@ void ImportDialog::renderIdle() {
   ImGui::Separator();
 
   const bool canScan = !sourcePath_.empty();
-  if (!canScan) { ImGui::BeginDisabled(); }
-  if (ImGui::Button("Scan for Photos")) { startScan(); }
-  if (!canScan) { ImGui::EndDisabled(); }
+  if (!canScan) {
+    ImGui::BeginDisabled();
+  }
+  if (ImGui::Button("Scan for Photos")) {
+    startScan();
+  }
+  if (!canScan) {
+    ImGui::EndDisabled();
+  }
 
   ImGui::SameLine();
-  if (ImGui::Button("Cancel##idle")) { close(); }
+  if (ImGui::Button("Cancel##idle")) {
+    close();
+  }
 }
 
 void ImportDialog::renderScanning() {
   drainScanQueue();
 
-  const int   done     = scanDone_;
-  const int   total    = scanTotal_;
+  const int done = scanDone_;
+  const int total = scanTotal_;
   const float progress = total > 0 ? static_cast<float>(done) / static_cast<float>(total) : 0.f;
 
   ImGui::Text("Scanning: %d / %d files", done, total);
   ImGui::ProgressBar(progress, {-1, 0});
-  ImGui::Text("%d photos found so far (duplicates excluded)", static_cast<int>(previewItems_.size()));
+  ImGui::Text("%d photos found so far (duplicates excluded)",
+              static_cast<int>(previewItems_.size()));
 
   if (ImGui::Button("Cancel##scan")) {
     cancelAll();
@@ -310,8 +335,8 @@ void ImportDialog::renderScanning() {
 void ImportDialog::renderPreview() {
   drainScanQueue();
 
-  const int found    = static_cast<int>(previewItems_.size());
-  const int total    = scanTotal_;
+  const int found = static_cast<int>(previewItems_.size());
+  const int total = scanTotal_;
   const int dupCount = total - found;
 
   ImGui::Text("Source: %s", sourcePath_.c_str());
@@ -319,9 +344,9 @@ void ImportDialog::renderPreview() {
   ImGui::Separator();
 
   constexpr float kCellSize = 120.0f;
-  constexpr float kCellPad  = 4.0f;
-  const float     availW    = ImGui::GetContentRegionAvail().x;
-  const int       cols      = std::max(1, static_cast<int>(availW / (kCellSize + kCellPad)));
+  constexpr float kCellPad = 4.0f;
+  const float availW = ImGui::GetContentRegionAvail().x;
+  const int cols = std::max(1, static_cast<int>(availW / (kCellSize + kCellPad)));
 
   const float bottomBarH = 45.0f;
   ImGui::BeginChild("##previewGrid", {0, -bottomBarH}, false, 0);
@@ -329,8 +354,8 @@ void ImportDialog::renderPreview() {
   const auto& io = ImGui::GetIO();
 
   for (int i = 0; i < found; ++i) {
-    const auto& item       = previewItems_[i];
-    const bool  isSelected = selectedIndices_.count(i) > 0;
+    const auto& item = previewItems_[i];
+    const bool isSelected = selectedIndices_.count(i) > 0;
 
     ImGui::PushID(i);
 
@@ -338,24 +363,29 @@ void ImportDialog::renderPreview() {
     ImGui::Image(reinterpret_cast<ImTextureID>(tex), {kCellSize, kCellSize});
 
     if (isSelected) {
-      auto* dl        = ImGui::GetWindowDrawList();
+      auto* dl = ImGui::GetWindowDrawList();
       const auto rmin = ImGui::GetItemRectMin();
       const auto rmax = ImGui::GetItemRectMax();
       dl->AddRect(rmin, rmax, IM_COL32(100, 180, 255, 220), 0.f, 0, 2.5f);
     }
 
     if (ImGui::IsItemClicked()) {
-      const bool cmdHeld   = (io.KeyMods & ImGuiMod_Super) != 0;
+      const bool cmdHeld = (io.KeyMods & ImGuiMod_Super) != 0;
       const bool shiftHeld = io.KeyShift;
 
       if (shiftHeld && shiftAnchor_ >= 0) {
         const int lo = std::min(i, shiftAnchor_);
         const int hi = std::max(i, shiftAnchor_);
         selectedIndices_.clear();
-        for (int j = lo; j <= hi; ++j) { selectedIndices_.insert(j); }
+        for (int j = lo; j <= hi; ++j) {
+          selectedIndices_.insert(j);
+        }
       } else if (cmdHeld) {
-        if (isSelected) { selectedIndices_.erase(i); }
-        else            { selectedIndices_.insert(i); }
+        if (isSelected) {
+          selectedIndices_.erase(i);
+        } else {
+          selectedIndices_.insert(i);
+        }
         shiftAnchor_ = i;
       } else {
         selectedIndices_.clear();
@@ -379,19 +409,31 @@ void ImportDialog::renderPreview() {
   ImGui::SameLine();
 
   const bool canImport = !selectedIndices_.empty();
-  if (!canImport) { ImGui::BeginDisabled(); }
-  if (ImGui::Button("Import Selected")) { startImport(); }
-  if (!canImport) { ImGui::EndDisabled(); }
+  if (!canImport) {
+    ImGui::BeginDisabled();
+  }
+  if (ImGui::Button("Import Selected")) {
+    startImport();
+  }
+  if (!canImport) {
+    ImGui::EndDisabled();
+  }
 
   ImGui::SameLine();
   if (ImGui::Button("Select All")) {
     selectedIndices_.clear();
-    for (int i = 0; i < found; ++i) { selectedIndices_.insert(i); }
+    for (int i = 0; i < found; ++i) {
+      selectedIndices_.insert(i);
+    }
   }
   ImGui::SameLine();
-  if (ImGui::Button("Deselect All")) { selectedIndices_.clear(); }
+  if (ImGui::Button("Deselect All")) {
+    selectedIndices_.clear();
+  }
   ImGui::SameLine();
-  if (ImGui::Button("Cancel##preview")) { close(); }
+  if (ImGui::Button("Cancel##preview")) {
+    close();
+  }
   ImGui::SameLine();
   ImGui::Checkbox("Copy files", &copyFiles_);
 }
@@ -399,9 +441,11 @@ void ImportDialog::renderPreview() {
 void ImportDialog::renderImporting() {
   // Check for import completion (set by background thread)
   if (importDone_) {
-    state_      = State::kDone;
+    state_ = State::kDone;
     importDone_ = false;
-    if (doneCb_) { doneCb_(); }
+    if (doneCb_) {
+      doneCb_();
+    }
     return;
   }
 
@@ -410,8 +454,8 @@ void ImportDialog::renderImporting() {
     renderConflictModal();
   }
 
-  const int   done     = doneFiles_;
-  const int   total    = totalFiles_;
+  const int done = doneFiles_;
+  const int total = totalFiles_;
   const float progress = total > 0 ? static_cast<float>(done) / static_cast<float>(total) : 0.f;
 
   std::string curFile;
@@ -431,8 +475,7 @@ void ImportDialog::renderImporting() {
 
 void ImportDialog::renderConflictModal() {
   ImGui::OpenPopup("File Conflict##modal");
-  if (!ImGui::BeginPopupModal("File Conflict##modal", nullptr,
-                              ImGuiWindowFlags_AlwaysAutoResize)) {
+  if (!ImGui::BeginPopupModal("File Conflict##modal", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
     return;
   }
 
@@ -440,7 +483,7 @@ void ImportDialog::renderConflictModal() {
   {
     std::lock_guard lk(conflictMtx_);
     filename = conflictInfo_.filename;
-    destDir  = conflictInfo_.destDir;
+    destDir = conflictInfo_.destDir;
   }
 
   ImGui::Text("%s already exists in:", filename.c_str());
@@ -453,8 +496,8 @@ void ImportDialog::renderConflictModal() {
   }
   ImGui::SameLine();
 
-  const auto stem    = fs::path(filename).stem().string();
-  const auto ext     = fs::path(filename).extension().string();
+  const auto stem = fs::path(filename).stem().string();
+  const auto ext = fs::path(filename).extension().string();
   const auto renamed = stem + "-1" + ext;
   if (ImGui::Button(("Rename to " + renamed).c_str())) {
     resolveConflict(import_ns::ConflictResolution::Rename);
@@ -476,10 +519,11 @@ void ImportDialog::renderDone() {
     std::lock_guard lk(progressMtx_);
     s = stats_;
   }
-  ImGui::TextColored({0.2f, 1.f, 0.2f, 1.f},
-                     "Done!  %d new,  %d duplicates,  %d errors",
+  ImGui::TextColored({0.2f, 1.f, 0.2f, 1.f}, "Done!  %d new,  %d duplicates,  %d errors",
                      s.imported, s.duplicates, s.errors);
-  if (ImGui::Button("Close")) { close(); }
+  if (ImGui::Button("Close")) {
+    close();
+  }
 }
 
 }  // namespace ui

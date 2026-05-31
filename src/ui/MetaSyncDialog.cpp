@@ -27,14 +27,14 @@ void MetaSyncDialog::open(int64_t primaryId, std::vector<int64_t> targetIds) {
 // ── Merge helpers ─────────────────────────────────────────────────────────────
 
 static catalog::EditSettings mergeSettings(const catalog::EditSettings& src,
-                                           const catalog::EditSettings& dst,
-                                           bool applyAdjust, bool applyCrop) {
+                                           const catalog::EditSettings& dst, bool applyAdjust,
+                                           bool applyCrop) {
   catalog::EditSettings merged = dst;
   if (applyAdjust) {
-    merged.exposure    = src.exposure;
+    merged.exposure = src.exposure;
     merged.temperature = src.temperature;
-    merged.contrast    = src.contrast;
-    merged.saturation  = src.saturation;
+    merged.contrast = src.contrast;
+    merged.saturation = src.saturation;
   }
   if (applyCrop) {
     merged.crop = src.crop;
@@ -50,8 +50,7 @@ void MetaSyncDialog::performSync() {
   if (!srcRec) {
     return;
   }
-  const catalog::EditSettings srcSettings =
-    catalog::EditSettings::fromJson(srcRec->editSettings);
+  const catalog::EditSettings srcSettings = catalog::EditSettings::fromJson(srcRec->editSettings);
 
   // Pre-load merged settings and thumb path for each target
   struct TargetUpdate {
@@ -67,8 +66,7 @@ void MetaSyncDialog::performSync() {
     if (!tgtRec) {
       continue;
     }
-    const catalog::EditSettings tgtSettings =
-      catalog::EditSettings::fromJson(tgtRec->editSettings);
+    const catalog::EditSettings tgtSettings = catalog::EditSettings::fromJson(tgtRec->editSettings);
     const catalog::EditSettings merged =
       mergeSettings(srcSettings, tgtSettings, syncAdjust_, syncCrop_);
     updates.push_back({id, merged.toJson(), merged, tgtRec->thumbPath});
@@ -77,13 +75,13 @@ void MetaSyncDialog::performSync() {
   // Write phase: dispatch through registry for logging; fall back to direct writes.
   if (registry_) {
     nlohmann::json tids = nlohmann::json::array();
-    for (const int64_t id : targetIds_) { tids.push_back(id); }
-    registry_->dispatch("metasync.apply", {
-        {"primaryId",  primaryId_},
-        {"targetIds",  tids},
-        {"syncAdjust", syncAdjust_},
-        {"syncCrop",   syncCrop_}
-    });
+    for (const int64_t id : targetIds_) {
+      tids.push_back(id);
+    }
+    registry_->dispatch("metasync.apply", {{"primaryId", primaryId_},
+                                           {"targetIds", tids},
+                                           {"syncAdjust", syncAdjust_},
+                                           {"syncCrop", syncCrop_}});
   } else {
     auto txn = repo_.db().transaction();
     for (const auto& u : updates) {
@@ -95,7 +93,9 @@ void MetaSyncDialog::performSync() {
   // Compute edited thumbnails in memory; drain happens at the top of the next
   // frame in main.mm (before grid.render()) to avoid a mid-frame use-after-free.
   for (const auto& u : updates) {
-    if (u.thumbPath.empty()) { continue; }
+    if (u.thumbPath.empty()) {
+      continue;
+    }
     if (auto res = ui::applyEditsToThumb(u.thumbPath, u.merged)) {
       pendingThumbUpdates_.push_back({u.id, std::move(res->rgba), res->w, res->h});
     }

@@ -26,8 +26,7 @@ class HashDedup {
   // Fast pre-filter: returns photo_id if filename+size matches an existing record.
   // Skips all file I/O; use before fullHash to short-circuit rescans of known files.
   static std::optional<int64_t> isKnownByNameAndSize(catalog::Database& db,
-                                                      const std::string& filename,
-                                                      int64_t size);
+                                                     const std::string& filename, int64_t size);
 };
 
 }  // namespace import_ns

@@ -20,7 +20,11 @@ class DbError : public std::runtime_error {
 class Stmt {
  public:
   explicit Stmt(sqlite3_stmt* s) : stmt_(s) {}
-  ~Stmt() { if (stmt_) { sqlite3_reset(stmt_); } }
+  ~Stmt() {
+    if (stmt_) {
+      sqlite3_reset(stmt_);
+    }
+  }
 
   sqlite3_stmt* raw() const { return stmt_; }
 

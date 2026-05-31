@@ -43,8 +43,8 @@ class TextureManager {
   bool upload(int64_t photoId, const std::vector<uint8_t>& jpegBytes);
 
   // Decode JPEG bytes to RGBA pixels. Thread-safe; no Metal. Call from any thread.
-  static bool decodeJpeg(const std::vector<uint8_t>& jpegBytes,
-                         std::vector<uint8_t>& outRgba, int& outW, int& outH);
+  static bool decodeJpeg(const std::vector<uint8_t>& jpegBytes, std::vector<uint8_t>& outRgba,
+                         int& outW, int& outH);
 
   // Upload pre-decoded RGBA pixels as MTLTexture. Must be called from the main thread.
   bool uploadRgba(int64_t photoId, const std::vector<uint8_t>& rgba, int w, int h);

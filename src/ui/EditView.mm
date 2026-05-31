@@ -29,27 +29,26 @@ enum class AspectConstraint { Free, Original, Fixed };
 struct AspectRatio {
   std::string_view label;
   AspectConstraint constraint;
-  float            ratio = 1.f;  // only used when constraint == Fixed
+  float ratio = 1.f;  // only used when constraint == Fixed
 };
 constexpr std::array<AspectRatio, 5> kAspectRatios = {{
-  {"Free"sv,     AspectConstraint::Free},
+  {"Free"sv, AspectConstraint::Free},
   {"Original"sv, AspectConstraint::Original},
-  {"1:1"sv,      AspectConstraint::Fixed, 1.f},
-  {"2:3"sv,      AspectConstraint::Fixed, 2.f/3.f},
-  {"3:2"sv,      AspectConstraint::Fixed, 3.f/2.f},
+  {"1:1"sv, AspectConstraint::Fixed, 1.f},
+  {"2:3"sv, AspectConstraint::Fixed, 2.f / 3.f},
+  {"3:2"sv, AspectConstraint::Fixed, 3.f / 2.f},
 }};
-
 
 static std::array<ImVec2, 8> cropHandlePositions(float cx, float cy, float cw, float ch) {
   return {{
-    {cx,      cy},        // TL
-    {cx+cw/2, cy},        // T
-    {cx+cw,   cy},        // TR
-    {cx,      cy+ch/2},   // L
-    {cx+cw,   cy+ch/2},   // R
-    {cx,      cy+ch},     // BL
-    {cx+cw/2, cy+ch},     // B
-    {cx+cw,   cy+ch},     // BR
+    {cx, cy},                // TL
+    {cx + cw / 2, cy},       // T
+    {cx + cw, cy},           // TR
+    {cx, cy + ch / 2},       // L
+    {cx + cw, cy + ch / 2},  // R
+    {cx, cy + ch},           // BL
+    {cx + cw / 2, cy + ch},  // B
+    {cx + cw, cy + ch},      // BR
   }};
 }
 
@@ -59,29 +58,33 @@ static std::array<ImVec2, 8> cropHandlePositions(float cx, float cy, float cw, f
 // inside the image.
 // imgAspect = srcW / srcH (used to convert normalized coords to pixel space).
 static void clampCropForAngle(catalog::CropRect& crop, float angleDeg, float imgAspect) {
-  if (angleDeg == 0.f || imgAspect <= 0.f) { return; }
+  if (angleDeg == 0.f || imgAspect <= 0.f) {
+    return;
+  }
   const float theta = std::abs(angleDeg) * (std::numbers::pi_v<float> / 180.f);
-  const float cosT  = std::cos(theta);
-  const float sinT  = std::sin(theta);
+  const float cosT = std::cos(theta);
+  const float sinT = std::sin(theta);
 
   // Crop center and available half-sizes to each image edge (normalized).
-  const float cx    = crop.x + crop.w * 0.5f;
-  const float cy    = crop.y + crop.h * 0.5f;
+  const float cx = crop.x + crop.w * 0.5f;
+  const float cy = crop.y + crop.h * 0.5f;
   const float maxHx = std::min(cx, 1.f - cx);
   const float maxHy = std::min(cy, 1.f - cy);
-  const float hw    = crop.w * 0.5f;
-  const float hh    = crop.h * 0.5f;
+  const float hw = crop.w * 0.5f;
+  const float hh = crop.h * 0.5f;
 
   // Pixel-space constraints (normalized × aspect cancels to pure normalized):
   //   hw·cos(θ) + hh/A·sin(θ) ≤ maxHx
   //   hw·A·sin(θ) + hh·cos(θ) ≤ maxHy
   const float reqX = hw * cosT + hh / imgAspect * sinT;
   const float reqY = hw * imgAspect * sinT + hh * cosT;
-  if (reqX <= maxHx && reqY <= maxHy) { return; }
+  if (reqX <= maxHx && reqY <= maxHy) {
+    return;
+  }
 
   const float scaleX = (reqX > 1e-6f) ? maxHx / reqX : 1.f;
   const float scaleY = (reqY > 1e-6f) ? maxHy / reqY : 1.f;
-  const float scale  = std::min({scaleX, scaleY, 1.f});
+  const float scale = std::min({scaleX, scaleY, 1.f});
 
   crop.w = hw * 2.f * scale;
   crop.h = hh * 2.f * scale;
@@ -89,8 +92,8 @@ static void clampCropForAngle(catalog::CropRect& crop, float angleDeg, float img
   crop.y = cy - crop.h * 0.5f;
 }
 
-static id<MTLTexture> rgbaToTexture(id<MTLDevice> dev,
-                                    const std::vector<uint8_t>& rgba, int w, int h) {
+static id<MTLTexture> rgbaToTexture(id<MTLDevice> dev, const std::vector<uint8_t>& rgba, int w,
+                                    int h) {
   MTLTextureDescriptor* desc =
     [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
                                                        width:w
@@ -112,19 +115,21 @@ namespace ui {
 
 // ── Constructor / Destructor ──────────────────────────────────────────────────
 
-EditView::EditView(catalog::PhotoRepository& repo,
-                   catalog::ThumbnailCache&  thumbCache,
-                   TextureManager&           texMgr,
-                   MTLDevicePtr              device)
+EditView::EditView(catalog::PhotoRepository& repo, catalog::ThumbnailCache& thumbCache,
+                   TextureManager& texMgr, MTLDevicePtr device)
   : repo_(repo), thumbCache_(thumbCache), texMgr_(texMgr), device_(device) {}
 
 EditView::~EditView() {
   fullDecodeCancel_ = true;
-  if (loadThread_.joinable()) { loadThread_.join(); }
+  if (loadThread_.joinable()) {
+    loadThread_.join();
+  }
   releasePreviewTex();
   [fallbackTex_ release];
   fallbackTex_ = nullptr;
-  if (saveThread_.joinable()) { saveThread_.join(); }
+  if (saveThread_.joinable()) {
+    saveThread_.join();
+  }
 }
 
 // ── open / close ─────────────────────────────────────────────────────────────
@@ -132,15 +137,17 @@ EditView::~EditView() {
 void EditView::open(int64_t photoId) {
   // Cancel + join any in-flight load from a previous photo
   fullDecodeCancel_ = true;
-  if (loadThread_.joinable()) { loadThread_.join(); }
+  if (loadThread_.joinable()) {
+    loadThread_.join();
+  }
   fullDecodeCancel_ = false;
-  fullDecodeReady_  = false;
+  fullDecodeReady_ = false;
   pendingRgb_.clear();
 
   photoId_ = photoId;
-  open_          = true;
-  justOpened_    = true;
-  mode_          = EditMode::Adjust;
+  open_ = true;
+  justOpened_ = true;
+  mode_ = EditMode::Adjust;
   tabSyncNeeded_ = false;
   dragHandle_ = -1;
   aspectMode_ = 1;
@@ -176,9 +183,8 @@ void EditView::open(int64_t photoId) {
   }
   if (!srcPath.empty()) {
     fullDecoding_ = true;
-    loadThread_ = std::thread([this, srcPath = std::move(srcPath)]() {
-      loadLibRawBackground(srcPath);
-    });
+    loadThread_ =
+      std::thread([this, srcPath = std::move(srcPath)]() { loadLibRawBackground(srcPath); });
   }
   previewDirty_ = true;
 }
@@ -188,10 +194,12 @@ void EditView::close() {
 }
 
 void EditView::setMode(EditMode mode) {
-  if (mode_ == mode) { return; }
-  mode_          = mode;
+  if (mode_ == mode) {
+    return;
+  }
+  mode_ = mode;
   tabSyncNeeded_ = true;
-  previewDirty_  = true;
+  previewDirty_ = true;
 }
 
 // ── Source pixel loading ──────────────────────────────────────────────────────
@@ -203,8 +211,8 @@ void EditView::loadLibRawBackground(std::string srcPath) {
   const auto img = util::loadImageAsRgb(srcPath, /*maxEdge=*/2000);
   if (img.ok()) {
     pendingRgb_ = img.pixels;
-    pendingW_   = img.width;
-    pendingH_   = img.height;
+    pendingW_ = img.width;
+    pendingH_ = img.height;
   }
   if (!fullDecodeCancel_.load()) {
     fullDecodeReady_ = true;
@@ -213,22 +221,23 @@ void EditView::loadLibRawBackground(std::string srcPath) {
 
 // Called from render() on the main thread. Swaps accurate pixels when background decode is done.
 void EditView::pollLibRawLoad() {
-  if (!fullDecoding_ || !fullDecodeReady_.load()) { return; }
+  if (!fullDecoding_ || !fullDecodeReady_.load()) {
+    return;
+  }
   loadThread_.join();
   originalRgb_ = std::move(pendingRgb_);
   srcW_ = pendingW_;
   srcH_ = pendingH_;
-  fullDecoding_    = false;
+  fullDecoding_ = false;
   fullDecodeReady_ = false;
-  previewDirty_    = true;  // rebuild preview with accurate base
+  previewDirty_ = true;  // rebuild preview with accurate base
 }
 
 // ── Pixel editing pipeline ────────────────────────────────────────────────────
 
 // Delegated to util::applyAdjustments (shared with Exporter pipeline).
-std::vector<uint8_t> EditView::applyEditsToPixels(
-    const std::vector<uint8_t>& src, int w, int h,
-    const catalog::EditSettings& s) const {
+std::vector<uint8_t> EditView::applyEditsToPixels(const std::vector<uint8_t>& src, int w, int h,
+                                                  const catalog::EditSettings& s) const {
   return util::applyAdjustments(src, w, h, s);
 }
 
@@ -256,8 +265,8 @@ void EditView::rebuildPreviewTexture() {
   const std::vector<uint8_t>* pixels = &edited;
   std::vector<uint8_t> croppedBuf;
   if (mode_ == EditMode::Adjust) {
-    croppedBuf = util::cropAndRotatePixels(edited, srcW_, srcH_, settings_.crop,
-                                          previewW, previewH);
+    croppedBuf =
+      util::cropAndRotatePixels(edited, srcW_, srcH_, settings_.crop, previewW, previewH);
     pixels = &croppedBuf;
   }
 
@@ -275,17 +284,17 @@ void EditView::applyCropConstraint(int handle) {
     return;
   }
   // Desired aspect ratio in PIXEL space (width / height).
-  const float physicalTarget = (c == AspectConstraint::Original)
-    ? ((origW_ > 0 && origH_ > 0)
-         ? static_cast<float>(origW_) / static_cast<float>(origH_)
-         : static_cast<float>(srcW_)  / static_cast<float>(srcH_))  // fallback
-    : kAspectRatios[aspectMode_].ratio;
+  const float physicalTarget =
+    (c == AspectConstraint::Original)
+      ? ((origW_ > 0 && origH_ > 0)
+           ? static_cast<float>(origW_) / static_cast<float>(origH_)
+           : static_cast<float>(srcW_) / static_cast<float>(srcH_))  // fallback
+      : kAspectRatios[aspectMode_].ratio;
 
   // Convert to NORMALIZED space: ncw/nch = physicalTarget / srcAspect.
   // The crop coords are fractions of srcW_/srcH_, so physical = normalized * srcAspect.
-  const float srcAspect = (srcW_ > 0 && srcH_ > 0)
-    ? static_cast<float>(srcW_) / static_cast<float>(srcH_)
-    : 1.f;
+  const float srcAspect =
+    (srcW_ > 0 && srcH_ > 0) ? static_cast<float>(srcW_) / static_cast<float>(srcH_) : 1.f;
   const float target = physicalTarget / srcAspect;
 
   float& ncx = settings_.crop.x;
@@ -297,29 +306,36 @@ void EditView::applyCropConstraint(int handle) {
     // Mode-switch: fit the constrained box inside the current crop without overflow.
     const float candidate_h = ncw / target;
     if (candidate_h <= nch) {
-      nch = candidate_h;      // shrink height to match width
+      nch = candidate_h;  // shrink height to match width
     } else {
-      ncw = nch * target;     // shrink width to match height
+      ncw = nch * target;  // shrink width to match height
     }
   } else {
     // Drag: derive from the axis determined by handle.
     const bool deriveHeightFromWidth = (handle != 3 && handle != 4 && handle != 5);
-    if (deriveHeightFromWidth) { nch = ncw / target; }
-    else                        { ncw = nch * target; }
+    if (deriveHeightFromWidth) {
+      nch = ncw / target;
+    } else {
+      ncw = nch * target;
+    }
   }
 
   // Fix position so the anchor corner stays put (skip when called from mode-switch, handle == -1).
   if (handle >= 0) {
-    const float anchorRight  = dragOrigX_ + dragOrigW_;
+    const float anchorRight = dragOrigX_ + dragOrigW_;
     const float anchorBottom = dragOrigY_ + dragOrigH_;
-    if (handle == 0 || handle == 3 || handle == 5) { ncx = anchorRight  - ncw; }
-    if (handle == 0 || handle == 1 || handle == 2) { ncy = anchorBottom - nch; }
+    if (handle == 0 || handle == 3 || handle == 5) {
+      ncx = anchorRight - ncw;
+    }
+    if (handle == 0 || handle == 1 || handle == 2) {
+      ncy = anchorBottom - nch;
+    }
   }
 
   ncx = std::clamp(ncx, 0.f, 0.99f);
   ncy = std::clamp(ncy, 0.f, 0.99f);
   ncw = std::clamp(ncw, 0.01f, 1.f - ncx);
-  nch = ncw / target;                          // re-derive after width clamp
+  nch = ncw / target;  // re-derive after width clamp
   nch = std::clamp(nch, 0.01f, 1.f - ncy);
   // If height hit minimum, re-derive width from the (now clamped) height.
   if (nch <= 0.01f + 1e-4f) {
@@ -341,17 +357,17 @@ void EditView::renderCropOverlay(ImDrawList* dl, ImVec2 imgMin, ImVec2 imgMax) c
   const ImU32 darkCol = IM_COL32(0, 0, 0, 160);
 
   // Four darkened regions outside the crop
-  dl->AddRectFilled(imgMin,          {imgMax.x, cy},     darkCol);  // top
-  dl->AddRectFilled({imgMin.x, cy+ch}, imgMax,           darkCol);  // bottom
-  dl->AddRectFilled({imgMin.x, cy},  {cx, cy+ch},        darkCol);  // left
-  dl->AddRectFilled({cx+cw, cy},     {imgMax.x, cy+ch},  darkCol);  // right
+  dl->AddRectFilled(imgMin, {imgMax.x, cy}, darkCol);              // top
+  dl->AddRectFilled({imgMin.x, cy + ch}, imgMax, darkCol);         // bottom
+  dl->AddRectFilled({imgMin.x, cy}, {cx, cy + ch}, darkCol);       // left
+  dl->AddRectFilled({cx + cw, cy}, {imgMax.x, cy + ch}, darkCol);  // right
 
   // White crop border
-  dl->AddRect({cx, cy}, {cx+cw, cy+ch}, IM_COL32_WHITE, 0.f, 0, 1.5f);
+  dl->AddRect({cx, cy}, {cx + cw, cy + ch}, IM_COL32_WHITE, 0.f, 0, 1.5f);
 
   const auto handles = cropHandlePositions(cx, cy, cw, ch);
   for (const auto& h : handles) {
-    dl->AddRectFilled({h.x-6.f, h.y-6.f}, {h.x+6.f, h.y+6.f}, IM_COL32_WHITE);
+    dl->AddRectFilled({h.x - 6.f, h.y - 6.f}, {h.x + 6.f, h.y + 6.f}, IM_COL32_WHITE);
   }
 
   // Horizontal center guideline — visible while the straighten slider is dragged
@@ -377,14 +393,13 @@ void EditView::handleCropDrag(ImVec2 imgMin, ImVec2 imgMax) {
     const ImVec2 mp = ImGui::GetMousePos();
     dragHandle_ = -1;
     for (int i = 0; i < 8; ++i) {
-      if (std::abs(mp.x - handles[i].x) < 10.f &&
-          std::abs(mp.y - handles[i].y) < 10.f) {
+      if (std::abs(mp.x - handles[i].x) < 10.f && std::abs(mp.y - handles[i].y) < 10.f) {
         dragHandle_ = i;
-        dragStart_  = mp;
-        dragOrigX_  = settings_.crop.x;
-        dragOrigY_  = settings_.crop.y;
-        dragOrigW_  = settings_.crop.w;
-        dragOrigH_  = settings_.crop.h;
+        dragStart_ = mp;
+        dragOrigX_ = settings_.crop.x;
+        dragOrigY_ = settings_.crop.y;
+        dragOrigW_ = settings_.crop.w;
+        dragOrigH_ = settings_.crop.h;
         break;
       }
     }
@@ -393,11 +408,11 @@ void EditView::handleCropDrag(ImVec2 imgMin, ImVec2 imgMax) {
       const bool insideY = mp.y >= cy && mp.y <= cy + ch;
       if (insideX && insideY) {
         dragHandle_ = 8;
-        dragStart_  = mp;
-        dragOrigX_  = settings_.crop.x;
-        dragOrigY_  = settings_.crop.y;
-        dragOrigW_  = settings_.crop.w;
-        dragOrigH_  = settings_.crop.h;
+        dragStart_ = mp;
+        dragOrigX_ = settings_.crop.x;
+        dragOrigY_ = settings_.crop.y;
+        dragOrigW_ = settings_.crop.w;
+        dragOrigH_ = settings_.crop.h;
       }
     }
   }
@@ -417,15 +432,41 @@ void EditView::handleCropDrag(ImVec2 imgMin, ImVec2 imgMax) {
     nch = dragOrigH_;
 
     switch (dragHandle_) {
-      case 0: ncx += dx; ncy += dy; ncw -= dx; nch -= dy; break;  // TL
-      case 1: ncy += dy; nch -= dy; break;                         // T
-      case 2: ncy += dy; ncw += dx; nch -= dy; break;              // TR
-      case 3: ncx += dx; ncw -= dx; break;                         // L
-      case 4: ncw += dx; break;                                     // R
-      case 5: ncx += dx; ncw -= dx; nch += dy; break;              // BL
-      case 6: nch += dy; break;                                     // B
-      case 7: ncw += dx; nch += dy; break;                         // BR
-      case 8:                                                       // Move
+      case 0:
+        ncx += dx;
+        ncy += dy;
+        ncw -= dx;
+        nch -= dy;
+        break;  // TL
+      case 1:
+        ncy += dy;
+        nch -= dy;
+        break;  // T
+      case 2:
+        ncy += dy;
+        ncw += dx;
+        nch -= dy;
+        break;  // TR
+      case 3:
+        ncx += dx;
+        ncw -= dx;
+        break;  // L
+      case 4:
+        ncw += dx;
+        break;  // R
+      case 5:
+        ncx += dx;
+        ncw -= dx;
+        nch += dy;
+        break;  // BL
+      case 6:
+        nch += dy;
+        break;  // B
+      case 7:
+        ncw += dx;
+        nch += dy;
+        break;  // BR
+      case 8:   // Move
         ncx = std::clamp(dragOrigX_ + dx, 0.f, 1.f - dragOrigW_);
         ncy = std::clamp(dragOrigY_ + dy, 0.f, 1.f - dragOrigH_);
         break;
@@ -445,8 +486,7 @@ void EditView::handleCropDrag(ImVec2 imgMin, ImVec2 imgMax) {
 
 // ── Panel renderers ───────────────────────────────────────────────────────────
 
-bool EditView::renderSliderRow(const char* label, float* v,
-                               float vmin, float vmax, float step) {
+bool EditView::renderSliderRow(const char* label, float* v, float vmin, float vmax, float step) {
   bool changed = false;
   const std::string slId = std::string("##sl_") + label;
   const std::string inId = std::string("##in_") + label;
@@ -471,10 +511,10 @@ bool EditView::renderSliderRow(const char* label, float* v,
 }
 
 void EditView::renderAdjustPanel() {
-  renderSliderRow("Exposure",    &settings_.exposure,    -3.f,  3.f,   0.05f);
+  renderSliderRow("Exposure", &settings_.exposure, -3.f, 3.f, 0.05f);
   renderSliderRow("Temperature", &settings_.temperature, -100.f, 100.f, 1.f);
-  renderSliderRow("Contrast",    &settings_.contrast,    -100.f, 100.f, 1.f);
-  renderSliderRow("Saturation",  &settings_.saturation,  -100.f, 100.f, 1.f);
+  renderSliderRow("Contrast", &settings_.contrast, -100.f, 100.f, 1.f);
+  renderSliderRow("Saturation", &settings_.saturation, -100.f, 100.f, 1.f);
 }
 
 void EditView::renderCropPanel() {
@@ -497,9 +537,9 @@ void EditView::renderStraightenBar(float previewW, float screenH) {
   ImGui::SetNextWindowSize({previewW, kBarH});
   ImGui::SetNextWindowBgAlpha(0.75f);
   ImGui::Begin("##straighten_bar", nullptr,
-               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar |
-                 ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoSavedSettings);
+               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                 ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoNav |
+                 ImGuiWindowFlags_NoSavedSettings);
 
   ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 8.f);
   ImGui::Text("Straighten");
@@ -508,12 +548,12 @@ void EditView::renderStraightenBar(float previewW, float screenH) {
   ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 18.f);
   ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.f, 8.f));
   const bool angleChanged =
-      ImGui::SliderFloat("##straighten", &settings_.crop.angleDeg, -45.f, 45.f, "%.1f°");
+    ImGui::SliderFloat("##straighten", &settings_.crop.angleDeg, -45.f, 45.f, "%.1f°");
   straightenDragging_ = ImGui::IsItemActive();
   if (angleChanged) {
-    const float aspect = (srcW_ > 0 && srcH_ > 0)   ? (float)srcW_ / (float)srcH_
-                       : (origW_ > 0 && origH_ > 0)  ? (float)origW_ / (float)origH_
-                       : 1.f;
+    const float aspect = (srcW_ > 0 && srcH_ > 0)     ? (float)srcW_ / (float)srcH_
+                         : (origW_ > 0 && origH_ > 0) ? (float)origW_ / (float)origH_
+                                                      : 1.f;
     clampCropForAngle(settings_.crop, settings_.crop.angleDeg, aspect);
   }
   ImGui::PopStyleVar(2);
@@ -538,7 +578,10 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
     // LibRaw decode still in progress; renderPreviewArea already draws the
     // dark background + "Loading accurate preview..." overlay.
     // Release any previously retained fallback.
-    if (fallbackTex_) { [fallbackTex_ release]; fallbackTex_ = nullptr; }
+    if (fallbackTex_) {
+      [fallbackTex_ release];
+      fallbackTex_ = nullptr;
+    }
     return;
   }
   MTLTexturePtr displayTex = previewTex_;
@@ -588,13 +631,11 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
     };
     const auto rotPt = [&](float px, float py) -> ImVec2 {
       const float dx = px - center.x, dy = py - center.y;
-      return {center.x + dx * cosA - dy * sinA,
-              center.y + dx * sinA + dy * cosA};
+      return {center.x + dx * cosA - dy * sinA, center.y + dx * sinA + dy * cosA};
     };
-    dl->AddImageQuad(reinterpret_cast<ImTextureID>(displayTex),
-                     rotPt(imgMin.x, imgMin.y), rotPt(imgMax.x, imgMin.y),
-                     rotPt(imgMax.x, imgMax.y), rotPt(imgMin.x, imgMax.y),
-                     {0, 0}, {1, 0}, {1, 1}, {0, 1});
+    dl->AddImageQuad(reinterpret_cast<ImTextureID>(displayTex), rotPt(imgMin.x, imgMin.y),
+                     rotPt(imgMax.x, imgMin.y), rotPt(imgMax.x, imgMax.y),
+                     rotPt(imgMin.x, imgMax.y), {0, 0}, {1, 0}, {1, 1}, {0, 1});
   } else {
     ImVec2 uvMin{0.f, 0.f}, uvMax{1.f, 1.f};
     // Apply crop UV only when thumbnail is the original camera JPEG (not pre-cropped).
@@ -613,9 +654,7 @@ void EditView::drawPreview(ImDrawList* dl, ImVec2 areaMin, ImVec2 areaMax) {
 
 // ── Background thumbnail save ─────────────────────────────────────────────────
 
-void EditView::regenThumbnail(int64_t photoId,
-                              catalog::EditSettings s,
-                              std::vector<uint8_t> srcRgb,
+void EditView::regenThumbnail(int64_t photoId, catalog::EditSettings s, std::vector<uint8_t> srcRgb,
                               int srcW, int srcH) {
   // Settings are persisted on the main thread via registry.dispatch("image.save")
   // in startSave() before this thread is launched.  Only thumbnail regen remains.
@@ -641,8 +680,8 @@ void EditView::regenThumbnail(int64_t photoId,
   }
   uint8_t* jpegBuf = nullptr;
   unsigned long jpegSize = 0;
-  if (tjCompress2(tjEnc, cropped.data(), cropW, 0, cropH, TJPF_RGB,
-                  &jpegBuf, &jpegSize, TJSAMP_420, 85, TJFLAG_FASTDCT) < 0) {
+  if (tjCompress2(tjEnc, cropped.data(), cropW, 0, cropH, TJPF_RGB, &jpegBuf, &jpegSize, TJSAMP_420,
+                  85, TJFLAG_FASTDCT) < 0) {
     tjDestroy(tjEnc);
     saveDone_ = true;
     return;
@@ -714,9 +753,9 @@ void EditView::startSave() {
   // Pass copies of the already-decoded LibRaw pixels so regenThumbnail uses
   // the same source as the preview — no camera-JPEG re-decode on the save thread.
   const catalog::EditSettings settingsCopy = settings_;
-  const std::vector<uint8_t>  rgbCopy      = originalRgb_;
-  const int                   wCopy        = srcW_;
-  const int                   hCopy        = srcH_;
+  const std::vector<uint8_t> rgbCopy = originalRgb_;
+  const int wCopy = srcW_;
+  const int hCopy = srcH_;
   saveThread_ = std::thread([this, settingsCopy, rgbCopy, wCopy, hCopy]() {
     regenThumbnail(photoId_, settingsCopy, rgbCopy, wCopy, hCopy);
   });
@@ -780,18 +819,22 @@ void EditView::renderModeTabs() {
   if (!ImGui::BeginTabBar("##EditModeTab")) {
     return;
   }
-  const bool syncAdj  = tabSyncNeeded_ && mode_ == EditMode::Adjust;
+  const bool syncAdj = tabSyncNeeded_ && mode_ == EditMode::Adjust;
   const bool syncCrop = tabSyncNeeded_ && mode_ == EditMode::Crop;
   tabSyncNeeded_ = false;
 
   if (ImGui::BeginTabItem("Adjust", nullptr, syncAdj ? ImGuiTabItemFlags_SetSelected : 0)) {
-    if (mode_ != EditMode::Adjust) { previewDirty_ = true; }
+    if (mode_ != EditMode::Adjust) {
+      previewDirty_ = true;
+    }
     mode_ = EditMode::Adjust;
     renderAdjustPanel();
     ImGui::EndTabItem();
   }
   if (ImGui::BeginTabItem("Crop", nullptr, syncCrop ? ImGuiTabItemFlags_SetSelected : 0)) {
-    if (mode_ != EditMode::Crop) { previewDirty_ = true; }
+    if (mode_ != EditMode::Crop) {
+      previewDirty_ = true;
+    }
     mode_ = EditMode::Crop;
     renderCropPanel();
     ImGui::EndTabItem();
@@ -839,8 +882,8 @@ void EditView::renderControlPanel(ImVec2 scr, float previewW) {
     ImGui::SetNextWindowFocus();
   }
   ImGui::Begin("##editpanel", nullptr,
-               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
+               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                 ImGuiWindowFlags_NoScrollbar);
   renderModeTabs();
   renderSaveButtons(scr);
   ImGui::End();
@@ -853,7 +896,7 @@ void EditView::pollSaveCompletion() {
     return;
   }
   saveThread_.join();
-  saving_   = false;
+  saving_ = false;
   saveDone_ = false;
   pendingEvictId_ = photoId_;
   if (savedCb_) {
@@ -870,15 +913,19 @@ void EditView::pollSaveCompletion() {
 // ── render ────────────────────────────────────────────────────────────────────
 
 void EditView::render() {
-  if (!open_) { return; }
+  if (!open_) {
+    return;
+  }
 
   pollLibRawLoad();
 
-  const ImVec2  scr      = ImGui::GetIO().DisplaySize;
-  const float   panelW   = 300.f;
-  const float   previewW = scr.x - panelW;
+  const ImVec2 scr = ImGui::GetIO().DisplaySize;
+  const float panelW = 300.f;
+  const float previewW = scr.x - panelW;
 
-  if (handleKeyCapture(scr)) { return; }
+  if (handleKeyCapture(scr)) {
+    return;
+  }
   renderPreviewArea(scr, previewW);
   renderControlPanel(scr, previewW);
   pollSaveCompletion();

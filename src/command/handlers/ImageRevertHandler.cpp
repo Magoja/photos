@@ -16,7 +16,9 @@ CommandResult ImageRevertHandler::execute(nlohmann::json params) {
   }
   repo_.updateEditSettings(id, "{}");
   repo_.updateThumb(id, "", 0, 0, 0);
-  if (adjustedCb_) { adjustedCb_(id); }
+  if (adjustedCb_) {
+    adjustedCb_(id);
+  }
   return success();
 }
 

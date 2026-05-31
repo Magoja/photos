@@ -14,12 +14,16 @@ using CommandResult = std::expected<nlohmann::json, std::string>;
 // segments separated by single dots. e.g. "image.adjust", "catalog.photo.open".
 // No uppercase, no underscores, no consecutive/leading/trailing dots.
 inline bool isValidCommandName(std::string_view name) {
-  if (name.empty()) { return false; }
+  if (name.empty()) {
+    return false;
+  }
   bool hasDot = false;
   bool segmentStart = true;  // true at the start of each segment
   for (const char c : name) {
     if (c == '.') {
-      if (segmentStart) { return false; }  // leading dot or consecutive dots
+      if (segmentStart) {
+        return false;
+      }  // leading dot or consecutive dots
       hasDot = true;
       segmentStart = true;
     } else if (std::islower(static_cast<unsigned char>(c)) ||
@@ -29,18 +33,28 @@ inline bool isValidCommandName(std::string_view name) {
       return false;  // disallowed character
     }
   }
-  if (segmentStart) { return false; }  // trailing dot
+  if (segmentStart) {
+    return false;
+  }  // trailing dot
   return hasDot;
 }
 
 // Result of validating handler input params: no payload on success, error string on failure.
 using ValidationResult = std::expected<void, std::string>;
 
-inline ValidationResult valid()                  { return {}; }
-inline ValidationResult invalid(std::string msg) { return std::unexpected(std::move(msg)); }
+inline ValidationResult valid() {
+  return {};
+}
+inline ValidationResult invalid(std::string msg) {
+  return std::unexpected(std::move(msg));
+}
 
-inline CommandResult success(nlohmann::json data = {}) { return data; }
-inline CommandResult failure(std::string msg) { return std::unexpected(std::move(msg)); }
+inline CommandResult success(nlohmann::json data = {}) {
+  return data;
+}
+inline CommandResult failure(std::string msg) {
+  return std::unexpected(std::move(msg));
+}
 
 // Returns a human-readable description of a dispatch result, e.g.:
 //   "[CMD] image.adjust -> ok"

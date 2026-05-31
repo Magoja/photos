@@ -22,22 +22,22 @@ class ExportSession {
   void cancel();
   void reset();
 
-  bool isRunning()     const;
-  bool isFinished()    const { return finished_.load(); }
-  int  doneCount()     const { return doneCount_.load(); }
-  int  totalCount()    const { return totalCount_.load(); }
-  int  exportedCount() const { return exportedCount_.load(); }
-  int  errorCount()    const { return errorCount_.load(); }
+  bool isRunning() const;
+  bool isFinished() const { return finished_.load(); }
+  int doneCount() const { return doneCount_.load(); }
+  int totalCount() const { return totalCount_.load(); }
+  int exportedCount() const { return exportedCount_.load(); }
+  int errorCount() const { return errorCount_.load(); }
 
  private:
-  catalog::PhotoRepository&    repo_;
-  std::unique_ptr<Exporter>    exporter_;
+  catalog::PhotoRepository& repo_;
+  std::unique_ptr<Exporter> exporter_;
 
   std::atomic<bool> finished_{false};
-  std::atomic<int>  doneCount_{0};
-  std::atomic<int>  totalCount_{0};
-  std::atomic<int>  exportedCount_{0};
-  std::atomic<int>  errorCount_{0};
+  std::atomic<int> doneCount_{0};
+  std::atomic<int> totalCount_{0};
+  std::atomic<int> exportedCount_{0};
+  std::atomic<int> errorCount_{0};
 };
 
 }  // namespace export_ns

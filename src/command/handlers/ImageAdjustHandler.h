@@ -19,12 +19,11 @@ namespace command {
 class ImageAdjustHandler : public ICommandHandler {
  public:
   explicit ImageAdjustHandler(catalog::PhotoRepository& repo) : repo_(repo) {}
-  ImageAdjustHandler(catalog::PhotoRepository& repo,
-                     std::function<void(int64_t)> adjustedCb)
-      : repo_(repo), adjustedCb_(std::move(adjustedCb)) {}
+  ImageAdjustHandler(catalog::PhotoRepository& repo, std::function<void(int64_t)> adjustedCb)
+    : repo_(repo), adjustedCb_(std::move(adjustedCb)) {}
 
   ValidationResult validate(const nlohmann::json& params) const override;
-  CommandResult    execute(nlohmann::json params) override;
+  CommandResult execute(nlohmann::json params) override;
 
  private:
   catalog::PhotoRepository& repo_;

@@ -50,46 +50,49 @@ class ImportDialog {
   void resolveConflict(import_ns::ConflictResolution res);
 
   catalog::Database& db_;
-  TextureManager&    texMgr_;
-  DoneCb             doneCb_;
-  bool               open_ = false;
+  TextureManager& texMgr_;
+  DoneCb doneCb_;
+  bool open_ = false;
 
-  State       state_      = State::kIdle;
+  State state_ = State::kIdle;
   std::string sourcePath_;
   std::string destPath_;
   std::string thumbRoot_;
-  bool        copyFiles_  = true;
+  bool copyFiles_ = true;
 
   // Scanning phase
   std::unique_ptr<import_ns::PreviewScanner> scanner_;
-  std::vector<import_ns::PreviewItem>        previewItems_;
-  std::vector<import_ns::PreviewItem>        pendingItems_;  // background → main thread queue
-  mutable std::mutex                         pendingMtx_;
-  std::atomic<int>                           scanDone_{0};
-  std::atomic<int>                           scanTotal_{0};
-  int64_t                                    nextPreviewId_ = -1;
+  std::vector<import_ns::PreviewItem> previewItems_;
+  std::vector<import_ns::PreviewItem> pendingItems_;  // background → main thread queue
+  mutable std::mutex pendingMtx_;
+  std::atomic<int> scanDone_{0};
+  std::atomic<int> scanTotal_{0};
+  int64_t nextPreviewId_ = -1;
 
   // Preview selection
   std::unordered_set<int> selectedIndices_;
-  int                     shiftAnchor_ = -1;
+  int shiftAnchor_ = -1;
 
   // Import phase
   std::unique_ptr<import_ns::Importer> importer_;
-  import_ns::ImportStats               stats_;
-  std::atomic<int>                     totalFiles_{0};
-  std::atomic<int>                     doneFiles_{0};
-  std::mutex                           progressMtx_;
-  std::string                          currentFile_;
-  std::atomic<bool>                    importDone_{false};
+  import_ns::ImportStats stats_;
+  std::atomic<int> totalFiles_{0};
+  std::atomic<int> doneFiles_{0};
+  std::mutex progressMtx_;
+  std::string currentFile_;
+  std::atomic<bool> importDone_{false};
 
   // Conflict handling (import thread blocks; main thread resolves)
-  struct ConflictInfo { std::string filename; std::string destDir; };
-  std::mutex                      conflictMtx_;
-  std::condition_variable         conflictCv_;
-  std::atomic<bool>               conflictPending_{false};
-  ConflictInfo                    conflictInfo_;
-  import_ns::ConflictResolution   conflictResolution_{import_ns::ConflictResolution::Skip};
-  bool                            conflictResolved_ = true;
+  struct ConflictInfo {
+    std::string filename;
+    std::string destDir;
+  };
+  std::mutex conflictMtx_;
+  std::condition_variable conflictCv_;
+  std::atomic<bool> conflictPending_{false};
+  ConflictInfo conflictInfo_;
+  import_ns::ConflictResolution conflictResolution_{import_ns::ConflictResolution::Skip};
+  bool conflictResolved_ = true;
 };
 
 }  // namespace ui

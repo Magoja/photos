@@ -110,26 +110,28 @@ struct RenderCtx {
   bool clearCachePending = false;
 };
 
-static bool loadAndDecodeJpeg(const std::string& path,
-                               std::vector<uint8_t>& outRgba, int& outW, int& outH) {
+static bool loadAndDecodeJpeg(const std::string& path, std::vector<uint8_t>& outRgba, int& outW,
+                              int& outH) {
   std::ifstream f(path, std::ios::binary);
-  if (!f) { return false; }
+  if (!f) {
+    return false;
+  }
   std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)), {});
-  if (bytes.empty()) { return false; }
+  if (bytes.empty()) {
+    return false;
+  }
   return ui::TextureManager::decodeJpeg(bytes, outRgba, outW, outH);
 }
 
-static std::vector<int64_t> buildSelectionList(
-    const std::unordered_set<int64_t>& selected, int64_t primaryId) {
+static std::vector<int64_t> buildSelectionList(const std::unordered_set<int64_t>& selected,
+                                               int64_t primaryId) {
   std::vector<int64_t> ids(selected.begin(), selected.end());
   ids.push_back(primaryId);
   return ids;
 }
 
-static void openOrSwitchEditMode(ui::FullscreenView& fullscreen,
-                                  ui::EditView& editView,
-                                  int64_t selId,
-                                  ui::EditMode mode) {
+static void openOrSwitchEditMode(ui::FullscreenView& fullscreen, ui::EditView& editView,
+                                 int64_t selId, ui::EditMode mode) {
   const int64_t target = fullscreen.isOpen() ? fullscreen.currentId() : selId;
   fullscreen.close();
   if (editView.isOpen()) {
@@ -141,15 +143,17 @@ static void openOrSwitchEditMode(ui::FullscreenView& fullscreen,
 }
 
 static void applyFilterMode(ui::FilterBar& filterBar, ui::GridView& grid,
-                             ui::FolderTreePanel& folderPanel,
-                             catalog::PhotoRepository& repo, ui::FilterMode mode) {
+                            ui::FolderTreePanel& folderPanel, catalog::PhotoRepository& repo,
+                            ui::FilterMode mode) {
   filterBar.setMode(mode);
   grid.loadFolder(folderPanel.selectedFolder(), mode);
   repo.setSetting("last_filter_mode", std::to_string(static_cast<int>(mode)));
 }
 
 static void loadMicroThumb(int64_t pid, const std::string& microPath, RenderCtx& ctx) {
-  if (microPath.empty()) { return; }
+  if (microPath.empty()) {
+    return;
+  }
   std::vector<uint8_t> rgba;
   int w = 0, h = 0;
   if (loadAndDecodeJpeg(microPath, rgba, w, h)) {
@@ -163,7 +167,9 @@ static void loadMicroThumb(int64_t pid, const std::string& microPath, RenderCtx&
 // Does NOT fall through to slow path on load failure — that would overwrite an
 // edited thumbnail's DB entry with the original hash-based path, reverting edits.
 static bool loadStandardThumb(int64_t pid, const std::string& path, RenderCtx& ctx) {
-  if (path.empty()) { return false; }
+  if (path.empty()) {
+    return false;
+  }
   std::vector<uint8_t> rgba;
   int w = 0, h = 0;
   if (loadAndDecodeJpeg(path, rgba, w, h)) {
@@ -180,11 +186,15 @@ static void generateAndServeThumb(int64_t pid, RenderCtx& ctx) {
     std::lock_guard lk(ctx.db.mutex());
     return ctx.repo.findById(pid);
   }();
-  if (!rec) { return; }
+  if (!rec) {
+    return;
+  }
 
   const std::string srcPath = ctx.repo.fullPathFor(rec->folderId, rec->filename);
   const auto dec = import_ns::RawDecoder::decode(srcPath);
-  if (!dec.ok || dec.thumbJpeg.empty()) { return; }
+  if (!dec.ok || dec.thumbJpeg.empty()) {
+    return;
+  }
 
   {
     std::lock_guard lk(ctx.db.mutex());
@@ -193,7 +203,9 @@ static void generateAndServeThumb(int64_t pid, RenderCtx& ctx) {
   }
 
   const std::string newPath = ctx.repo.getThumbPath(pid);
-  if (newPath.empty()) { return; }
+  if (newPath.empty()) {
+    return;
+  }
   std::vector<uint8_t> rgba;
   int w = 0, h = 0;
   if (loadAndDecodeJpeg(newPath, rgba, w, h)) {
@@ -203,16 +215,14 @@ static void generateAndServeThumb(int64_t pid, RenderCtx& ctx) {
 }
 
 static void setupThumbMissCallback(RenderCtx& ctx, util::ThreadPool& thumbPool) {
-  ctx.grid.setThumbMissCallback(
-    [&](int64_t pid, std::string path, std::string microPath) {
-      thumbPool.submit([pid, path = std::move(path), microPath = std::move(microPath),
-                        &ctx]() {
-        loadMicroThumb(pid, microPath, ctx);
-        if (!loadStandardThumb(pid, path, ctx)) {
-          generateAndServeThumb(pid, ctx);
-        }
-      });
+  ctx.grid.setThumbMissCallback([&](int64_t pid, std::string path, std::string microPath) {
+    thumbPool.submit([pid, path = std::move(path), microPath = std::move(microPath), &ctx]() {
+      loadMicroThumb(pid, microPath, ctx);
+      if (!loadStandardThumb(pid, path, ctx)) {
+        generateAndServeThumb(pid, ctx);
+      }
     });
+  });
 }
 
 static void wireUiCallbacks(RenderCtx& ctx) {
@@ -247,9 +257,7 @@ static void wireUiCallbacks(RenderCtx& ctx) {
   // The Settings panel renders after the grid has already added texture pointers
   // to the ImGui draw list — calling evictAll() mid-frame would free those
   // textures before ImGui_ImplMetal_RenderDrawData processes them (crash).
-  ctx.settingsPanel.setClearCacheCallback([&]() {
-    ctx.clearCachePending = true;
-  });
+  ctx.settingsPanel.setClearCacheCallback([&]() { ctx.clearCachePending = true; });
 }
 
 static void drainThumbQueue(RenderCtx& ctx) {
@@ -266,7 +274,9 @@ static void drainThumbQueue(RenderCtx& ctx) {
 }
 
 static void drainClearCache(RenderCtx& ctx) {
-  if (!ctx.clearCachePending) { return; }
+  if (!ctx.clearCachePending) {
+    return;
+  }
   ctx.clearCachePending = false;
   ctx.texMgr.evictAll();
   {
@@ -274,9 +284,7 @@ static void drainClearCache(RenderCtx& ctx) {
     ctx.repo.clearAllThumbs();
   }
   const std::string cacheBase = util::cacheDir();
-  for (const auto& dir : {ctx.thumbDir,
-                           cacheBase + "/thumbs_micro",
-                           cacheBase + "/thumbs_edit"}) {
+  for (const auto& dir : {ctx.thumbDir, cacheBase + "/thumbs_micro", cacheBase + "/thumbs_edit"}) {
     std::error_code ec;
     fs::remove_all(dir, ec);
     fs::create_directories(dir, ec);
@@ -298,14 +306,20 @@ static void drainTextureEvictions(RenderCtx& ctx) {
 
 static void togglePickSelection(RenderCtx& ctx) {
   const int64_t selId = ctx.grid.selectedId();
-  if (selId <= 0) { return; }
+  if (selId <= 0) {
+    return;
+  }
   const auto rec = ctx.repo.findById(selId);
-  if (!rec) { return; }
+  if (!rec) {
+    return;
+  }
   const int newPicked = rec->picked ? 0 : 1;
 
   // Capture IDs before dispatching — each dispatch triggers grid.reload()
   std::vector<int64_t> toToggle{selId};
-  for (const auto id : ctx.grid.selectedIds()) { toToggle.push_back(id); }
+  for (const auto id : ctx.grid.selectedIds()) {
+    toToggle.push_back(id);
+  }
 
   for (const auto id : toToggle) {
     ctx.registry.dispatch("catalog.pick", {{"id", id}, {"picked", newPicked}});
@@ -314,7 +328,9 @@ static void togglePickSelection(RenderCtx& ctx) {
 
 static void processGlobalHotkeys(RenderCtx& ctx) {
   const auto& io = ImGui::GetIO();
-  if (io.WantTextInput) { return; }
+  if (io.WantTextInput) {
+    return;
+  }
 
   // Cmd+A: select all photos in the current view (works even with no current selection)
   if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_A)) {
@@ -322,16 +338,19 @@ static void processGlobalHotkeys(RenderCtx& ctx) {
   }
 
   // ESC: cancel selection (only when grid is active, not fullscreen/edit)
-  if (ImGui::IsKeyPressed(ImGuiKey_Escape) &&
-      !ctx.fullscreen.isOpen() && !ctx.editView.isOpen() &&
+  if (ImGui::IsKeyPressed(ImGuiKey_Escape) && !ctx.fullscreen.isOpen() && !ctx.editView.isOpen() &&
       ctx.grid.selectionCount() > 0) {
     ctx.grid.clearSelection();
   }
 
   const int64_t selId = ctx.grid.selectedId();
-  if (selId <= 0) { return; }
+  if (selId <= 0) {
+    return;
+  }
 
-  if (ctx.fullscreen.isOpen()) { return; }
+  if (ctx.fullscreen.isOpen()) {
+    return;
+  }
 
   if (ImGui::IsKeyPressed(ImGuiKey_F)) {
     ctx.editView.close();
@@ -344,11 +363,21 @@ static void processGlobalHotkeys(RenderCtx& ctx) {
   if (ImGui::IsKeyPressed(ImGuiKey_R)) {
     openOrSwitchEditMode(ctx.fullscreen, ctx.editView, selId, ui::EditMode::Crop);
   }
-  if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent)) { togglePickSelection(ctx); }
-  if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))   { ctx.grid.navigatePrimary(-1); }
-  if (ImGui::IsKeyPressed(ImGuiKey_RightArrow))  { ctx.grid.navigatePrimary(+1); }
-  if (ImGui::IsKeyPressed(ImGuiKey_UpArrow))     { ctx.grid.navigatePrimary(-ctx.grid.columnCount()); }
-  if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))   { ctx.grid.navigatePrimary(+ctx.grid.columnCount()); }
+  if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent)) {
+    togglePickSelection(ctx);
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
+    ctx.grid.navigatePrimary(-1);
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+    ctx.grid.navigatePrimary(+1);
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
+    ctx.grid.navigatePrimary(-ctx.grid.columnCount());
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
+    ctx.grid.navigatePrimary(+ctx.grid.columnCount());
+  }
 }
 
 static void renderMenuBar(RenderCtx& ctx) {
@@ -374,7 +403,7 @@ static void renderMenuBar(RenderCtx& ctx) {
     ImGui::EndMenu();
   }
   if (ImGui::BeginMenu("View")) {
-    const bool isAll    = (ctx.filterBar.mode() == ui::FilterMode::All);
+    const bool isAll = (ctx.filterBar.mode() == ui::FilterMode::All);
     const bool isPicked = (ctx.filterBar.mode() == ui::FilterMode::Picked);
     if (ImGui::MenuItem("All Photos", nullptr, isAll)) {
       applyFilterMode(ctx.filterBar, ctx.grid, ctx.folderPanel, ctx.repo, ui::FilterMode::All);
@@ -415,8 +444,7 @@ static void renderPhotosPanel(RenderCtx& ctx) {
   ImGui::Begin("Photos");
   if (ctx.filterBar.render()) {
     ctx.grid.loadFolder(ctx.folderPanel.selectedFolder(), ctx.filterBar.mode());
-    ctx.repo.setSetting("last_filter_mode",
-                        std::to_string(static_cast<int>(ctx.filterBar.mode())));
+    ctx.repo.setSetting("last_filter_mode", std::to_string(static_cast<int>(ctx.filterBar.mode())));
   }
   if (ctx.grid.selectionCount() >= 2) {
     ImGui::SameLine();
@@ -442,7 +470,9 @@ static void renderPhotosPanel(RenderCtx& ctx) {
 }
 
 static std::string formatFileSize(int64_t bytes) {
-  if (bytes <= 0) { return {}; }
+  if (bytes <= 0) {
+    return {};
+  }
   char buf[32];
   if (bytes >= 1024 * 1024) {
     std::snprintf(buf, sizeof(buf), "%.1f MB", bytes / (1024.0 * 1024.0));
@@ -461,7 +491,9 @@ static std::string buildPhotoMetaString(const catalog::PhotoRecord& rec) {
   }
 
   if (!rec.cameraMake.empty() || !rec.cameraModel.empty()) {
-    fields.push_back(rec.cameraMake + ((!rec.cameraMake.empty() && !rec.cameraModel.empty()) ? " " : "") + rec.cameraModel);
+    fields.push_back(rec.cameraMake +
+                     ((!rec.cameraMake.empty() && !rec.cameraModel.empty()) ? " " : "") +
+                     rec.cameraModel);
   }
 
   if (rec.widthPx > 0 && rec.heightPx > 0) {
@@ -471,11 +503,15 @@ static std::string buildPhotoMetaString(const catalog::PhotoRecord& rec) {
   }
 
   const std::string sz = formatFileSize(rec.fileSize);
-  if (!sz.empty()) { fields.push_back(sz); }
+  if (!sz.empty()) {
+    fields.push_back(sz);
+  }
 
   std::string result;
   for (const auto& f : fields) {
-    if (!result.empty()) { result += "   |   "; }
+    if (!result.empty()) {
+      result += "   |   ";
+    }
     result += f;
   }
   return result;
@@ -488,10 +524,9 @@ static void renderStatusBar(RenderCtx& ctx) {
   ImGui::SetNextWindowViewport(vp->ID);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {6.f, 4.f});
   ImGui::Begin("##StatusBar", nullptr,
-               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking |
-                 ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings |
-                 ImGuiWindowFlags_NoBringToFrontOnFocus);
+               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                 ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoScrollbar |
+                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleVar();
 
   // Left: photo count
@@ -518,7 +553,7 @@ static void renderStatusBar(RenderCtx& ctx) {
   ImGui::End();
 }
 
-} // namespace
+}  // namespace
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 int main(int /*argc*/, char** /*argv*/) {
@@ -565,7 +600,7 @@ int main(int /*argc*/, char** /*argv*/) {
   }
 
   // ── SDL2 ──────────────────────────────────────────────────────────────────
-  SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI, "0");   // suppress HID gamepad probing on macOS
+  SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI, "0");  // suppress HID gamepad probing on macOS
   SDL_SetHint(SDL_HINT_RENDER_DRIVER, "metal");
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
     spdlog::error("SDL_Init: {}", SDL_GetError());
@@ -627,23 +662,21 @@ int main(int /*argc*/, char** /*argv*/) {
 
   // ── Command registry ──────────────────────────────────────────────────────
   const command::CommandRegistry registry =
-      command::buildRegistry(repo, texMgr, grid, exportSession);
+    command::buildRegistry(repo, texMgr, grid, exportSession);
 
   // ── Wire everything up ────────────────────────────────────────────────────
   bool running = true;
-  RenderCtx ctx{running, libraryRoot, thumbDir, db, repo, thumbCache, texMgr,
-                grid, folderPanel, filterBar, fullscreen, editView,
-                importDlg, exportDlg, metaSyncDlg, settingsPanel,
-                thumbMtx, thumbResQ, registry};
+  RenderCtx ctx{running,     libraryRoot,   thumbDir,  db,         repo,     thumbCache, texMgr,
+                grid,        folderPanel,   filterBar, fullscreen, editView, importDlg,  exportDlg,
+                metaSyncDlg, settingsPanel, thumbMtx,  thumbResQ,  registry};
 
   folderPanel.refresh();
   // Restore last session state
-  const int64_t lastFolder = static_cast<int64_t>(
-      std::stoll(repo.getSetting("last_folder_id", "0")));
-  const ui::FilterMode lastFilter =
-      std::stoi(repo.getSetting("last_filter_mode", "0")) == 1
-          ? ui::FilterMode::Picked
-          : ui::FilterMode::All;
+  const int64_t lastFolder =
+    static_cast<int64_t>(std::stoll(repo.getSetting("last_folder_id", "0")));
+  const ui::FilterMode lastFilter = std::stoi(repo.getSetting("last_filter_mode", "0")) == 1
+                                      ? ui::FilterMode::Picked
+                                      : ui::FilterMode::All;
   folderPanel.setSelectedFolder(lastFolder);
   filterBar.setMode(lastFilter);
   grid.loadFolder(lastFolder, lastFilter);

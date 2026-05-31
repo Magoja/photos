@@ -23,11 +23,21 @@ CommandResult ImageCropHandler::execute(nlohmann::json params) {
   }
 
   auto s = catalog::EditSettings::fromJson(rec->editSettings);
-  if (params.contains("x"))        { s.crop.x        = params["x"].get<float>(); }
-  if (params.contains("y"))        { s.crop.y        = params["y"].get<float>(); }
-  if (params.contains("w"))        { s.crop.w        = params["w"].get<float>(); }
-  if (params.contains("h"))        { s.crop.h        = params["h"].get<float>(); }
-  if (params.contains("angleDeg")) { s.crop.angleDeg = params["angleDeg"].get<float>(); }
+  if (params.contains("x")) {
+    s.crop.x = params["x"].get<float>();
+  }
+  if (params.contains("y")) {
+    s.crop.y = params["y"].get<float>();
+  }
+  if (params.contains("w")) {
+    s.crop.w = params["w"].get<float>();
+  }
+  if (params.contains("h")) {
+    s.crop.h = params["h"].get<float>();
+  }
+  if (params.contains("angleDeg")) {
+    s.crop.angleDeg = params["angleDeg"].get<float>();
+  }
 
   repo_.updateEditSettings(id, s.toJson());
   repo_.updateThumb(id, "", 0, 0, 0);

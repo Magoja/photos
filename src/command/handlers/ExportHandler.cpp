@@ -18,7 +18,7 @@ CommandResult ExportHandler::execute(nlohmann::json params) {
   }
 
   const std::string targetPath = params["targetPath"].get<std::string>();
-  const int         quality    = params.value("quality", 90);
+  const int quality = params.value("quality", 90);
 
   std::vector<int64_t> ids;
   ids.reserve(params["ids"].size());

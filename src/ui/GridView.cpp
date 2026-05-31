@@ -104,24 +104,34 @@ void GridView::handleCellClick(int64_t pid) {
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 void GridView::navigatePrimary(int delta) {
-  if (photoIds_.empty() || primaryId_ <= 0) { return; }
+  if (photoIds_.empty() || primaryId_ <= 0) {
+    return;
+  }
   const auto it = std::ranges::find(photoIds_, primaryId_);
-  if (it == photoIds_.end()) { return; }
-  const int idx  = static_cast<int>(std::distance(photoIds_.begin(), it));
+  if (it == photoIds_.end()) {
+    return;
+  }
+  const int idx = static_cast<int>(std::distance(photoIds_.begin(), it));
   const int next = std::clamp(idx + delta, 0, static_cast<int>(photoIds_.size()) - 1);
-  if (next == idx) { return; }
+  if (next == idx) {
+    return;
+  }
   selectedIds_.clear();
   primaryId_ = photoIds_[next];
   scrollToPrimary_ = true;
-  if (onSelectCb_) { onSelectCb_(primaryId_); }
+  if (onSelectCb_) {
+    onSelectCb_(primaryId_);
+  }
 }
 
 void GridView::selectAll() {
-  if (photoIds_.empty()) { return; }
+  if (photoIds_.empty()) {
+    return;
+  }
   selectedIds_.clear();
   primaryId_ = photoIds_.front();
   std::ranges::for_each(photoIds_ | std::views::drop(1),
-    [this](const int64_t id) { selectedIds_.insert(id); });
+                        [this](const int64_t id) { selectedIds_.insert(id); });
 }
 
 void GridView::clearSelection() {
@@ -176,11 +186,11 @@ void GridView::render() {
     scrollToPrimary_ = false;
     const auto it = std::ranges::find(photoIds_, primaryId_);
     if (it != photoIds_.end()) {
-      const int idx       = static_cast<int>(std::distance(photoIds_.begin(), it));
+      const int idx = static_cast<int>(std::distance(photoIds_.begin(), it));
       const int targetRow = idx / cols_;
       const float targetY = targetRow * cellH;
       const float scrollY = ImGui::GetScrollY();
-      const float viewH   = ImGui::GetContentRegionAvail().y;
+      const float viewH = ImGui::GetContentRegionAvail().y;
       if (targetY < scrollY || targetY + cellH > scrollY + viewH) {
         ImGui::SetScrollY(targetY - viewH * 0.3f);
       }
@@ -202,9 +212,9 @@ void GridView::render() {
       }
 
       int64_t pid = photoIds_[idx];
-      const auto* stdTex   = texMgr_.get(pid);
+      const auto* stdTex = texMgr_.get(pid);
       const auto* microTex = texMgr_.get(pid + kMicroOffset);
-      const bool stdLoaded   = (stdTex   != texMgr_.placeholder());
+      const bool stdLoaded = (stdTex != texMgr_.placeholder());
       const bool microLoaded = (microTex != texMgr_.placeholder());
 
       if (!stdLoaded && thumbMissCb_ && !requested_.count(pid)) {
@@ -212,19 +222,17 @@ void GridView::render() {
         thumbMissCb_(pid, repo_.getThumbPath(pid), repo_.getThumbMicroPath(pid));
       }
 
-      const bool isPrimary  = (pid == primaryId_);
+      const bool isPrimary = (pid == primaryId_);
       const bool isOtherSel = (selectedIds_.count(pid) > 0);
 
-      const auto* displayTex = stdLoaded   ? stdTex
-                             : microLoaded ? microTex
-                             : texMgr_.placeholder();
-      const auto [tw, th] = stdLoaded   ? texMgr_.getSize(pid)
-                          : microLoaded ? texMgr_.getSize(pid + kMicroOffset)
-                          : std::pair{1, 1};
+      const auto* displayTex = stdLoaded ? stdTex : microLoaded ? microTex : texMgr_.placeholder();
+      const auto [tw, th] = stdLoaded     ? texMgr_.getSize(pid)
+                            : microLoaded ? texMgr_.getSize(pid + kMicroOffset)
+                                          : std::pair{1, 1};
       const auto& meta = thumbMeta_.count(pid) ? thumbMeta_.at(pid) : ThumbMeta{};
-      const auto [effW, effH] = stdLoaded
-        ? std::pair{static_cast<int>(tw * meta.cropW), static_cast<int>(th * meta.cropH)}
-        : std::pair{tw, th};
+      const auto [effW, effH] =
+        stdLoaded ? std::pair{static_cast<int>(tw * meta.cropW), static_cast<int>(th * meta.cropH)}
+                  : std::pair{tw, th};
       auto [imgW, imgH] = computeLetterboxSize(effW, effH, thumbW, thumbH);
 
       if (col > 0) {
@@ -237,9 +245,9 @@ void GridView::render() {
 
       ImDrawList* dl = ImGui::GetWindowDrawList();
 
-      ImU32 bgCol = isPrimary  ? IM_COL32(80, 60, 10, 255)
-                  : isOtherSel ? IM_COL32(10, 40, 80, 255)
-                  : IM_COL32(35, 35, 35, 255);
+      ImU32 bgCol = isPrimary    ? IM_COL32(80, 60, 10, 255)
+                    : isOtherSel ? IM_COL32(10, 40, 80, 255)
+                                 : IM_COL32(35, 35, 35, 255);
       dl->AddRectFilled(cellPos, {cellPos.x + cellW, cellPos.y + cellH}, bgCol);
 
       float offX = (thumbW - imgW) * 0.5f + kThumbPad;
@@ -247,8 +255,8 @@ void GridView::render() {
       ImVec2 imgMin = {cellPos.x + offX, cellPos.y + offY};
       ImVec2 imgMax = {imgMin.x + imgW, imgMin.y + imgH};
       const auto uv = thumbCropUV(meta);
-      dl->AddImage(reinterpret_cast<ImTextureID>(displayTex), imgMin, imgMax,
-                   {uv.u0, uv.v0}, {uv.u1, uv.v1});
+      dl->AddImage(reinterpret_cast<ImTextureID>(displayTex), imgMin, imgMax, {uv.u0, uv.v0},
+                   {uv.u1, uv.v1});
 
       if (isPrimary) {
         dl->AddRect(cellPos, {cellPos.x + cellW, cellPos.y + cellH}, IM_COL32(255, 200, 50, 255),

@@ -15,10 +15,10 @@ namespace command {
 class MetaSyncHandler : public ICommandHandler {
  public:
   MetaSyncHandler(catalog::PhotoRepository& repo, std::function<void()> doneCb)
-      : repo_(repo), doneCb_(std::move(doneCb)) {}
+    : repo_(repo), doneCb_(std::move(doneCb)) {}
 
   ValidationResult validate(const nlohmann::json& params) const override;
-  CommandResult    execute(nlohmann::json params) override;
+  CommandResult execute(nlohmann::json params) override;
 
  private:
   catalog::PhotoRepository& repo_;

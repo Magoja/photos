@@ -7,23 +7,29 @@
 
 namespace ui {
 
-std::optional<ThumbPixels> applyEditsToThumb(
-    const std::string& thumbPath, const catalog::EditSettings& s) {
+std::optional<ThumbPixels> applyEditsToThumb(const std::string& thumbPath,
+                                             const catalog::EditSettings& s) {
   std::ifstream f(thumbPath, std::ios::binary);
-  if (!f) { return std::nullopt; }
+  if (!f) {
+    return std::nullopt;
+  }
   const std::vector<uint8_t> jpeg((std::istreambuf_iterator<char>(f)), {});
-  if (jpeg.empty()) { return std::nullopt; }
+  if (jpeg.empty()) {
+    return std::nullopt;
+  }
 
   std::vector<uint8_t> rgba;
   int w = 0, h = 0;
-  if (!TextureManager::decodeJpeg(jpeg, rgba, w, h)) { return std::nullopt; }
+  if (!TextureManager::decodeJpeg(jpeg, rgba, w, h)) {
+    return std::nullopt;
+  }
 
-  const float eMul  = std::pow(2.f, s.exposure);
-  const float t     = s.temperature / 100.f;
-  const float rMul  = 1.f + t * 0.30f;
-  const float gMul  = 1.f + t * 0.05f;
-  const float bMul  = 1.f - t * 0.30f;
-  const float cFact = 1.f + s.contrast   / 100.f;
+  const float eMul = std::pow(2.f, s.exposure);
+  const float t = s.temperature / 100.f;
+  const float rMul = 1.f + t * 0.30f;
+  const float gMul = 1.f + t * 0.05f;
+  const float bMul = 1.f - t * 0.30f;
+  const float cFact = 1.f + s.contrast / 100.f;
   const float sFact = 1.f + s.saturation / 100.f;
 
   for (int i = 0, n = w * h; i < n; ++i) {
@@ -31,8 +37,12 @@ std::optional<ThumbPixels> applyEditsToThumb(
     float g = rgba[i * 4 + 1];
     float b = rgba[i * 4 + 2];
 
-    r *= eMul;  g *= eMul;  b *= eMul;
-    r *= rMul;  g *= gMul;  b *= bMul;
+    r *= eMul;
+    g *= eMul;
+    b *= eMul;
+    r *= rMul;
+    g *= gMul;
+    b *= bMul;
     r = 128.f + (r - 128.f) * cFact;
     g = 128.f + (g - 128.f) * cFact;
     b = 128.f + (b - 128.f) * cFact;
@@ -60,7 +70,7 @@ std::optional<ThumbPixels> applyEditsToThumb(
   for (int row = 0; row < cropH; ++row) {
     const int srcRow = std::clamp(cropY + row, 0, h - 1);
     const int srcCol = std::clamp(cropX, 0, w - 1);
-    const int copyW  = std::min(cropW, w - srcCol);
+    const int copyW = std::min(cropW, w - srcCol);
     std::memcpy(cropped.data() + static_cast<size_t>(row) * cropW * 4,
                 rgba.data() + (static_cast<size_t>(srcRow) * w + srcCol) * 4,
                 static_cast<size_t>(copyW) * 4);

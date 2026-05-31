@@ -7,7 +7,7 @@ namespace util {
 
 struct RgbImage {
   std::vector<uint8_t> pixels;  // planar RGB, 3 bytes/pixel, row-major
-  int width  = 0;
+  int width = 0;
   int height = 0;
   bool ok() const { return !pixels.empty() && width > 0 && height > 0; }
 };

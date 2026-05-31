@@ -11,20 +11,22 @@
 #include <atomic>
 #include <thread>
 
-namespace command { class CommandRegistry; }
+namespace command {
+class CommandRegistry;
+}
 
 namespace ui {
 
 class FullscreenView {
  public:
   using PickChangedCb = std::function<void(int64_t photoId, int picked)>;
-  using OpenEditCb    = std::function<void(int64_t photoId)>;
+  using OpenEditCb = std::function<void(int64_t photoId)>;
 
   FullscreenView(catalog::PhotoRepository& repo, TextureManager& texMgr);
   ~FullscreenView();
 
   void setPickChangedCallback(PickChangedCb cb) { pickChangedCb_ = std::move(cb); }
-  void setOpenEditCallback(OpenEditCb cb)        { openEditCb_    = std::move(cb); }
+  void setOpenEditCallback(OpenEditCb cb) { openEditCb_ = std::move(cb); }
   void setRegistry(const command::CommandRegistry* reg) { registry_ = reg; }
 
   // Set the list of photo IDs to navigate through
@@ -44,47 +46,47 @@ class FullscreenView {
   catalog::PhotoRepository& repo_;
   TextureManager& texMgr_;
   PickChangedCb pickChangedCb_;
-  OpenEditCb    openEditCb_;
+  OpenEditCb openEditCb_;
   const command::CommandRegistry* registry_ = nullptr;
 
   std::vector<int64_t> photoIds_;
   // Offset added to photoId when storing the tone-adjusted texture in TextureManager.
   // Must not collide with kMicroOffset (1'000'000'000).
-  static constexpr int64_t kAdjOffset   = 2'000'000'000LL;
-  static constexpr int     kAdjCacheMax = 5;
+  static constexpr int64_t kAdjOffset = 2'000'000'000LL;
+  static constexpr int kAdjCacheMax = 5;
 
   int64_t currentId_ = 0;
   int currentIdx_ = 0;
   bool open_ = false;
 
   // Adj-texture LRU cache (capacity kAdjCacheMax)
-  std::deque<int64_t>          adjCacheOrder_;
-  std::unordered_set<int64_t>  adjCachedIds_;
-  int                          lastDelta_ = 1;
+  std::deque<int64_t> adjCacheOrder_;
+  std::unordered_set<int64_t> adjCachedIds_;
+  int lastDelta_ = 1;
 
   float zoom_ = 1.f;
   float panX_ = 0.f;
   float panY_ = 0.f;
 
   // Background LibRaw decode for tone-correct display
-  std::thread            decodeThread_;
-  std::atomic<bool>      decodeCancel_{false};
-  std::atomic<bool>      decodeReady_{false};
-  bool                   decoding_ = false;
-  std::vector<uint8_t>   pendingRgba_;
-  int                    pendingW_ = 0;
-  int                    pendingH_ = 0;
-  int64_t                decodingForId_ = 0;
+  std::thread decodeThread_;
+  std::atomic<bool> decodeCancel_{false};
+  std::atomic<bool> decodeReady_{false};
+  bool decoding_ = false;
+  std::vector<uint8_t> pendingRgba_;
+  int pendingW_ = 0;
+  int pendingH_ = 0;
+  int64_t decodingForId_ = 0;
 
   // Prefetch job (mirrors the existing decode job pattern)
-  std::thread            prefetchThread_;
-  std::atomic<bool>      prefetchCancel_{false};
-  std::atomic<bool>      prefetchReady_{false};
-  bool                   prefetching_   = false;
-  std::vector<uint8_t>   prefetchRgba_;
-  int                    prefetchW_     = 0;
-  int                    prefetchH_     = 0;
-  int64_t                prefetchForId_ = 0;
+  std::thread prefetchThread_;
+  std::atomic<bool> prefetchCancel_{false};
+  std::atomic<bool> prefetchReady_{false};
+  bool prefetching_ = false;
+  std::vector<uint8_t> prefetchRgba_;
+  int prefetchW_ = 0;
+  int prefetchH_ = 0;
+  int64_t prefetchForId_ = 0;
 
   // Toast state
   bool toastVisible_ = false;

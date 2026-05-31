@@ -11,10 +11,10 @@ namespace command {
 class CatalogOpenHandler : public ICommandHandler {
  public:
   explicit CatalogOpenHandler(std::function<void(int64_t)> selectCb)
-      : selectCb_(std::move(selectCb)) {}
+    : selectCb_(std::move(selectCb)) {}
 
   ValidationResult validate(const nlohmann::json& params) const override;
-  CommandResult    execute(nlohmann::json params) override;
+  CommandResult execute(nlohmann::json params) override;
 
  private:
   std::function<void(int64_t)> selectCb_;

@@ -16,8 +16,7 @@ Dependencies defaultDependencies() {
 
 CommandRegistry::CommandRegistry(Dependencies deps) : deps_(std::move(deps)) {}
 
-void CommandRegistry::registerHandler(std::string name,
-                                      std::unique_ptr<ICommandHandler> handler) {
+void CommandRegistry::registerHandler(std::string name, std::unique_ptr<ICommandHandler> handler) {
   if (!isValidCommandName(name)) {
     throw std::invalid_argument("invalid command name: '" + name +
                                 "' (must be dot.namespaced lowercase)");
@@ -28,8 +27,7 @@ void CommandRegistry::registerHandler(std::string name,
   handlers_[std::move(name)] = std::move(handler);
 }
 
-CommandResult CommandRegistry::dispatch(const std::string& name,
-                                        nlohmann::json params) const {
+CommandResult CommandRegistry::dispatch(const std::string& name, nlohmann::json params) const {
   const auto it = handlers_.find(name);
   if (it == handlers_.end()) {
     const auto result = failure("unknown command: " + name);

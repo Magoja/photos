@@ -14,12 +14,11 @@ namespace command {
 class ImageRevertHandler : public ICommandHandler {
  public:
   explicit ImageRevertHandler(catalog::PhotoRepository& repo) : repo_(repo) {}
-  ImageRevertHandler(catalog::PhotoRepository& repo,
-                     std::function<void(int64_t)> adjustedCb)
-      : repo_(repo), adjustedCb_(std::move(adjustedCb)) {}
+  ImageRevertHandler(catalog::PhotoRepository& repo, std::function<void(int64_t)> adjustedCb)
+    : repo_(repo), adjustedCb_(std::move(adjustedCb)) {}
 
   ValidationResult validate(const nlohmann::json& params) const override;
-  CommandResult    execute(nlohmann::json params) override;
+  CommandResult execute(nlohmann::json params) override;
 
  private:
   catalog::PhotoRepository& repo_;

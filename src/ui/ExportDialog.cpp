@@ -8,12 +8,12 @@ namespace fs = std::filesystem;
 namespace ui {
 
 ExportDialog::ExportDialog(catalog::PhotoRepository& repo, export_ns::ExportSession& session)
-    : repo_(repo), session_(session) {}
+  : repo_(repo), session_(session) {}
 
 void ExportDialog::open(int64_t primaryId, std::vector<int64_t> ids) {
-  primaryId_   = primaryId;
+  primaryId_ = primaryId;
   selectedIds_ = std::move(ids);
-  open_        = true;
+  open_ = true;
 
   session_.reset();
 
@@ -41,7 +41,7 @@ void ExportDialog::render() {
   }
 
   const bool exporting = session_.isRunning();
-  const bool finished  = session_.isFinished();
+  const bool finished = session_.isFinished();
 
   ImGui::SetNextWindowSize({480, 240}, ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver,
@@ -97,7 +97,7 @@ void ExportDialog::render() {
     }
 
   } else if (exporting) {
-    const int done  = session_.doneCount();
+    const int done = session_.doneCount();
     const int total = session_.totalCount();
     const float prog = total > 0 ? static_cast<float>(done) / total : 0.f;
     ImGui::ProgressBar(prog, {-1, 0});

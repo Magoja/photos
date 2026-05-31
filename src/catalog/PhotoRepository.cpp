@@ -306,7 +306,7 @@ std::optional<int64_t> PhotoRepository::findByHash(const std::string& hash) cons
 }
 
 std::optional<int64_t> PhotoRepository::findByFilenameAndSize(const std::string& filename,
-                                                                int64_t size) const {
+                                                              int64_t size) const {
   auto s = db_.prepare("SELECT id FROM photos WHERE filename=? AND file_size=? LIMIT 1");
   s.bind(1, filename);
   s.bind(2, size);
@@ -336,8 +336,8 @@ std::vector<int64_t> PhotoRepository::queryAll(bool pickedOnly) const {
   return collectIds(s);
 }
 
-std::unordered_map<int64_t, std::pair<std::string, std::string>>
-PhotoRepository::queryThumbMeta(int64_t folderId, bool pickedOnly) const {
+std::unordered_map<int64_t, std::pair<std::string, std::string>> PhotoRepository::queryThumbMeta(
+  int64_t folderId, bool pickedOnly) const {
   static const std::string kSelect =
     "SELECT id, COALESCE(thumb_path,''), COALESCE(edit_settings,'{}') FROM photos";
   static const std::string kOrderBy = " ORDER BY COALESCE(capture_time,import_time)";
@@ -412,7 +412,7 @@ void PhotoRepository::updateEditSettingsBulk(const std::vector<int64_t>& ids,
 }
 
 void PhotoRepository::updateFolderAndCaptureTime(int64_t id, int64_t folderId,
-                                                  const std::string& captureTime) {
+                                                 const std::string& captureTime) {
   auto s = db_.prepare("UPDATE photos SET folder_id=?, capture_time=? WHERE id=?");
   s.bind(1, folderId);
   s.bind(2, captureTime);
@@ -421,8 +421,9 @@ void PhotoRepository::updateFolderAndCaptureTime(int64_t id, int64_t folderId,
 }
 
 void PhotoRepository::clearAllThumbs() {
-  db_.exec("UPDATE photos SET thumb_path=NULL, thumb_micro_path=NULL, "
-           "thumb_width=0, thumb_height=0, thumb_mtime=0");
+  db_.exec(
+    "UPDATE photos SET thumb_path=NULL, thumb_micro_path=NULL, "
+    "thumb_width=0, thumb_height=0, thumb_mtime=0");
 }
 
 // ── App settings ──────────────────────────────────────────────────────────────

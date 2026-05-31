@@ -12,12 +12,11 @@ namespace command {
 // pickedCb (optional): called with (id, picked) after DB write succeeds.
 class CatalogPickHandler : public ICommandHandler {
  public:
-  CatalogPickHandler(catalog::PhotoRepository& repo,
-                     std::function<void(int64_t, int)> pickedCb)
-      : repo_(repo), pickedCb_(std::move(pickedCb)) {}
+  CatalogPickHandler(catalog::PhotoRepository& repo, std::function<void(int64_t, int)> pickedCb)
+    : repo_(repo), pickedCb_(std::move(pickedCb)) {}
 
   ValidationResult validate(const nlohmann::json& params) const override;
-  CommandResult    execute(nlohmann::json params) override;
+  CommandResult execute(nlohmann::json params) override;
 
  private:
   catalog::PhotoRepository& repo_;

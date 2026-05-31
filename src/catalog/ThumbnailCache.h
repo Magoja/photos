@@ -12,8 +12,8 @@ namespace catalog {
 // where {xx} = first 2 hex chars of hash
 class ThumbnailCache {
  public:
-  static constexpr int kMaxDim   = 256;  // max standard thumbnail dimension
-  static constexpr int kMicroDim = 64;   // max micro thumbnail dimension
+  static constexpr int kMaxDim = 256;   // max standard thumbnail dimension
+  static constexpr int kMicroDim = 64;  // max micro thumbnail dimension
 
   explicit ThumbnailCache(const std::string& cacheRoot);
 
@@ -47,7 +47,7 @@ class ThumbnailCache {
   // Resize JPEG to fit within maxDim×maxDim, preserving aspect ratio.
   // scale < 1.0 darkens the output by multiplying each pixel value.
   static std::vector<uint8_t> resizeJpeg(const std::vector<uint8_t>& src, int maxDim,
-                                          float scale = 1.0f);
+                                         float scale = 1.0f);
 
  private:
   std::string root_;

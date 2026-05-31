@@ -47,7 +47,7 @@ static std::optional<int64_t> dbDuplicateCheck(Database& db, const std::string& 
 static std::optional<std::string> renameDestination(const std::string& srcPath,
                                                     const std::string& destDir) {
   const auto stem = fs::path(srcPath).stem().string();
-  const auto ext  = fs::path(srcPath).extension().string();
+  const auto ext = fs::path(srcPath).extension().string();
   for (int i = 1; i < 1000; ++i) {
     const auto newName = stem + "-" + std::to_string(i) + ext;
     const auto newDest = destDir + "/" + newName;
@@ -80,8 +80,7 @@ static std::optional<std::string> copyToDestination(const std::string& srcPath,
   fs::create_directories(destDir);
 
   if (fs::exists(destFile)) {
-    const auto res = conflictCb ? conflictCb(filename, destDir)
-                                : ConflictResolution::Skip;
+    const auto res = conflictCb ? conflictCb(filename, destDir) : ConflictResolution::Skip;
     switch (res) {
       case ConflictResolution::Skip:
         return std::nullopt;
@@ -190,8 +189,8 @@ void Importer::run() {
 
       std::string destFile;
       if (opts_.copyFiles) {
-        auto result = copyToDestination(sf.path, destForDate(dec.exif.captureTime),
-                                       opts_.conflictCb);
+        auto result =
+          copyToDestination(sf.path, destForDate(dec.exif.captureTime), opts_.conflictCb);
         if (!result) {
           ++stats_.errors;
           continue;
@@ -250,10 +249,14 @@ void Importer::repairUnknownFolder(catalog::Database& db, const std::string& des
   {
     std::lock_guard lk(db.mutex());
     unknownFolder = repo.findFolder("unknown");
-    if (!unknownFolder || unknownFolder->id == 0) { return; }
+    if (!unknownFolder || unknownFolder->id == 0) {
+      return;
+    }
     photoIds = repo.queryByFolder(unknownFolder->id, false);
   }
-  if (photoIds.empty()) { return; }
+  if (photoIds.empty()) {
+    return;
+  }
 
   spdlog::info("repairUnknownFolder: {} photos to repair", photoIds.size());
   int fixed = 0;
@@ -265,16 +268,24 @@ void Importer::repairUnknownFolder(catalog::Database& db, const std::string& des
       std::lock_guard lk(db.mutex());
       photo = repo.findById(pid);
     }
-    if (!photo) { continue; }
+    if (!photo) {
+      continue;
+    }
 
     const auto srcPath = destPath + "/unknown/" + photo->filename;
-    if (!fs::exists(srcPath)) { ++errors; continue; }
+    if (!fs::exists(srcPath)) {
+      ++errors;
+      continue;
+    }
 
     const auto dec = RawDecoder::decode(srcPath);
-    if (dec.exif.captureTime.size() < 10) { ++errors; continue; }
+    if (dec.exif.captureTime.size() < 10) {
+      ++errors;
+      continue;
+    }
 
-    const auto dateStr  = dec.exif.captureTime.substr(0, 10);
-    const auto newDir   = destPath + "/" + dateStr;
+    const auto dateStr = dec.exif.captureTime.substr(0, 10);
+    const auto newDir = destPath + "/" + dateStr;
     const auto destFile = newDir + "/" + photo->filename;
 
     std::error_code ec;

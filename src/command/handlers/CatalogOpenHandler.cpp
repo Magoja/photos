@@ -11,7 +11,9 @@ ValidationResult CatalogOpenHandler::validate(const nlohmann::json& params) cons
 
 CommandResult CatalogOpenHandler::execute(nlohmann::json params) {
   const int64_t id = params["id"].get<int64_t>();
-  if (selectCb_) { selectCb_(id); }
+  if (selectCb_) {
+    selectCb_(id);
+  }
   return success();
 }
 

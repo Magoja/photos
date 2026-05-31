@@ -82,8 +82,7 @@ std::optional<int64_t> HashDedup::isDuplicate(catalog::Database& db, const std::
 }
 
 std::optional<int64_t> HashDedup::isKnownByNameAndSize(catalog::Database& db,
-                                                        const std::string& filename,
-                                                        int64_t size) {
+                                                       const std::string& filename, int64_t size) {
   auto s = db.prepare("SELECT id FROM photos WHERE filename=? AND file_size=? LIMIT 1");
   s.bind(1, filename);
   s.bind(2, size);

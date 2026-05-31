@@ -48,9 +48,8 @@ static std::vector<uint8_t> applyAdjustments(const std::vector<uint8_t>& src, in
   return util::applyAdjustments(src, w, h, s);
 }
 
-
 static std::vector<uint8_t> compressToJpeg(const std::vector<uint8_t>& rgb, int w, int h,
-                                            int quality) {
+                                           int quality) {
   tjhandle tjc = tjInitCompress();
   if (!tjc) {
     return {};
@@ -84,8 +83,8 @@ static void writeU32LE(std::vector<uint8_t>& v, uint32_t x) {
   v.push_back(static_cast<uint8_t>((x >> 24) & 0xFF));
 }
 // Write an IFD entry (tag, type, count, value-or-offset)
-static void writeIfdEntry(std::vector<uint8_t>& v, uint16_t tag, uint16_t type,
-                          uint32_t count, uint32_t valueOrOffset) {
+static void writeIfdEntry(std::vector<uint8_t>& v, uint16_t tag, uint16_t type, uint32_t count,
+                          uint32_t valueOrOffset) {
   writeU16LE(v, tag);
   writeU16LE(v, type);
   writeU32LE(v, count);
@@ -119,11 +118,14 @@ static void appendGpsDms(std::vector<uint8_t>& heap, double deg) {
   const uint32_t sDen = 100;
 
   // degrees: d/1
-  writeU32LE(heap, d);   writeU32LE(heap, 1);
+  writeU32LE(heap, d);
+  writeU32LE(heap, 1);
   // minutes: m/1
-  writeU32LE(heap, m);   writeU32LE(heap, 1);
+  writeU32LE(heap, m);
+  writeU32LE(heap, 1);
   // seconds: sNum/sDen
-  writeU32LE(heap, sNum); writeU32LE(heap, sDen);
+  writeU32LE(heap, sNum);
+  writeU32LE(heap, sDen);
 }
 
 // Format capture time "YYYY-MM-DDTHH:MM:SS" → "YYYY:MM:DD HH:MM:SS"
@@ -134,10 +136,16 @@ static std::string captureTimeToExif(const std::string& iso) {
   }
   std::string out = iso.substr(0, 19);
   // Replace '-' in date part with ':'
-  if (out[4] == '-') { out[4] = ':'; }
-  if (out[7] == '-') { out[7] = ':'; }
+  if (out[4] == '-') {
+    out[4] = ':';
+  }
+  if (out[7] == '-') {
+    out[7] = ':';
+  }
   // Replace 'T' separator with space
-  if (out[10] == 'T') { out[10] = ' '; }
+  if (out[10] == 'T') {
+    out[10] = ' ';
+  }
   return out;
 }
 
@@ -156,14 +164,20 @@ static std::vector<uint8_t> buildExifPayload(const PhotoRecord& rec) {
 
   const std::string exifDt = captureTimeToExif(rec.captureTime);
   const bool hasGps = (rec.gpsLat != 0.0 || rec.gpsLon != 0.0);
-  const bool hasMake  = !rec.cameraMake.empty();
+  const bool hasMake = !rec.cameraMake.empty();
   const bool hasModel = !rec.cameraModel.empty();
 
   // Count IFD0 entries
   int ifd0Count = 1;  // always ExifIFD pointer
-  if (hasMake)  ++ifd0Count;
-  if (hasModel) ++ifd0Count;
-  if (hasGps)   ++ifd0Count;
+  if (hasMake) {
+    ++ifd0Count;
+  }
+  if (hasModel) {
+    ++ifd0Count;
+  }
+  if (hasGps) {
+    ++ifd0Count;
+  }
 
   // Sizes:
   //   TIFF header:  8
@@ -171,21 +185,22 @@ static std::vector<uint8_t> buildExifPayload(const PhotoRecord& rec) {
   //   ExifIFD:      2 + 1*12 + 4
   //   GPSIFD:       2 + 6*12 + 4  (if present)
 
-  const size_t hdrSize    = 8;
-  const size_t ifd0Size   = 2 + ifd0Count * 12 + 4;
+  const size_t hdrSize = 8;
+  const size_t ifd0Size = 2 + ifd0Count * 12 + 4;
   const size_t exifIfdOff = hdrSize + ifd0Size;
   const size_t exifIfdSize = 2 + 1 * 12 + 4;
-  const size_t gpsIfdOff  = exifIfdOff + exifIfdSize;
-  const size_t gpsIfdSize  = hasGps ? (2 + 6 * 12 + 4) : 0;
-  const size_t heapStart  = gpsIfdOff + gpsIfdSize;
+  const size_t gpsIfdOff = exifIfdOff + exifIfdSize;
+  const size_t gpsIfdSize = hasGps ? (2 + 6 * 12 + 4) : 0;
+  const size_t heapStart = gpsIfdOff + gpsIfdSize;
 
   std::vector<uint8_t> tiff;
   tiff.reserve(512);
   std::vector<uint8_t> heap;  // string/rational data appended after IFDs
 
   // ── TIFF header ───────────────────────────────────────────────────────────
-  tiff.push_back('I'); tiff.push_back('I');    // little-endian
-  writeU16LE(tiff, 0x002A);                    // TIFF magic
+  tiff.push_back('I');
+  tiff.push_back('I');                               // little-endian
+  writeU16LE(tiff, 0x002A);                          // TIFF magic
   writeU32LE(tiff, static_cast<uint32_t>(hdrSize));  // IFD0 at offset 8
 
   // ── IFD0 ─────────────────────────────────────────────────────────────────
@@ -226,8 +241,13 @@ static std::vector<uint8_t> buildExifPayload(const PhotoRecord& rec) {
     writeU16LE(tiff, 6);  // 6 entries
 
     // GPSVersionID: BYTE[4] = {2,3,0,0} — fits inline
-    writeU16LE(tiff, 0x0000); writeU16LE(tiff, 1); writeU32LE(tiff, 4);
-    tiff.push_back(2); tiff.push_back(3); tiff.push_back(0); tiff.push_back(0);
+    writeU16LE(tiff, 0x0000);
+    writeU16LE(tiff, 1);
+    writeU32LE(tiff, 4);
+    tiff.push_back(2);
+    tiff.push_back(3);
+    tiff.push_back(0);
+    tiff.push_back(0);
 
     // GPSLatitudeRef
     {
@@ -258,15 +278,21 @@ static std::vector<uint8_t> buildExifPayload(const PhotoRecord& rec) {
     // GPSAltitudeRef: BYTE[1] — 0=above sea, 1=below; fits inline
     {
       const uint8_t ref = rec.gpsAltM < 0 ? 1 : 0;
-      writeU16LE(tiff, 0x0005); writeU16LE(tiff, 1); writeU32LE(tiff, 1);
-      tiff.push_back(ref); tiff.push_back(0); tiff.push_back(0); tiff.push_back(0);
+      writeU16LE(tiff, 0x0005);
+      writeU16LE(tiff, 1);
+      writeU32LE(tiff, 1);
+      tiff.push_back(ref);
+      tiff.push_back(0);
+      tiff.push_back(0);
+      tiff.push_back(0);
     }
     // GPSAltitude: RATIONAL[1]
     {
       const uint32_t off = static_cast<uint32_t>(heapStart + heap.size());
       const double alt = std::abs(rec.gpsAltM);
       const uint32_t num = static_cast<uint32_t>(alt * 100);
-      writeU32LE(heap, num); writeU32LE(heap, 100);
+      writeU32LE(heap, num);
+      writeU32LE(heap, 100);
       writeIfdEntry(tiff, 0x0006, 5, 1, off);
     }
     writeU32LE(tiff, 0);  // GPSIFD next-IFD = none
@@ -278,15 +304,19 @@ static std::vector<uint8_t> buildExifPayload(const PhotoRecord& rec) {
   // Wrap in "Exif\0\0" prefix
   std::vector<uint8_t> payload;
   payload.reserve(6 + tiff.size());
-  payload.push_back('E'); payload.push_back('x'); payload.push_back('i'); payload.push_back('f');
-  payload.push_back(0); payload.push_back(0);
+  payload.push_back('E');
+  payload.push_back('x');
+  payload.push_back('i');
+  payload.push_back('f');
+  payload.push_back(0);
+  payload.push_back(0);
   payload.insert(payload.end(), tiff.begin(), tiff.end());
   return payload;
 }
 
 // Inject an APP1 EXIF block right after the JPEG SOI marker (FF D8)
 static std::vector<uint8_t> injectExifApp1(const std::vector<uint8_t>& jpeg,
-                                            const std::vector<uint8_t>& exifPayload) {
+                                           const std::vector<uint8_t>& exifPayload) {
   if (jpeg.size() < 2 || jpeg[0] != 0xFF || jpeg[1] != 0xD8) {
     return jpeg;  // not a valid JPEG SOI
   }
@@ -296,9 +326,11 @@ static std::vector<uint8_t> injectExifApp1(const std::vector<uint8_t>& jpeg,
   out.reserve(2 + 2 + 2 + exifPayload.size() + jpeg.size() - 2);
 
   // SOI
-  out.push_back(0xFF); out.push_back(0xD8);
+  out.push_back(0xFF);
+  out.push_back(0xD8);
   // APP1 marker + length + payload
-  out.push_back(0xFF); out.push_back(0xE1);
+  out.push_back(0xFF);
+  out.push_back(0xE1);
   out.push_back(static_cast<uint8_t>((app1Len >> 8) & 0xFF));
   out.push_back(static_cast<uint8_t>(app1Len & 0xFF));
   out.insert(out.end(), exifPayload.begin(), exifPayload.end());
@@ -333,7 +365,9 @@ bool Exporter::exportOne(const PhotoRecord& rec, const fs::path& destPath) {
 
   libraw_processed_image_t* img = raw->dcraw_make_mem_image();
   if (!img || img->type != LIBRAW_IMAGE_BITMAP || img->colors != 3) {
-    if (img) { LibRaw::dcraw_clear_mem(img); }
+    if (img) {
+      LibRaw::dcraw_clear_mem(img);
+    }
     spdlog::warn("Export: LibRaw image format unexpected for {}", srcPath);
     return false;
   }
@@ -349,8 +383,7 @@ bool Exporter::exportOne(const PhotoRecord& rec, const fs::path& destPath) {
 
   // 3. Apply crop + straighten
   int outW = srcW, outH = srcH;
-  const auto cropped = util::cropAndRotatePixels(adjusted, srcW, srcH,
-                                                 settings.crop, outW, outH);
+  const auto cropped = util::cropAndRotatePixels(adjusted, srcW, srcH, settings.crop, outW, outH);
 
   // 4. Compress to JPEG
   auto jpeg = compressToJpeg(cropped, outW, outH, preset_.quality);
@@ -382,33 +415,50 @@ void Exporter::run(std::vector<int64_t> ids) {
     spdlog::error("Export: output dir unavailable '{}': {}", preset_.targetPath,
                   ec ? ec.message() : "not a directory");
     running_ = false;
-    if (doneCb_) { doneCb_(0, static_cast<int>(ids.size())); }
+    if (doneCb_) {
+      doneCb_(0, static_cast<int>(ids.size()));
+    }
     return;
   }
 
   int exported = 0, errors = 0;
   bool overwriteAll = false;
-  bool skipAll      = false;
+  bool skipAll = false;
 
   for (int i = 0; i < static_cast<int>(ids.size()); ++i) {
-    if (cancelled_) { break; }
-    if (progressCb_) { progressCb_(i, static_cast<int>(ids.size())); }
+    if (cancelled_) {
+      break;
+    }
+    if (progressCb_) {
+      progressCb_(i, static_cast<int>(ids.size()));
+    }
 
     const auto rec = repo_.findById(ids[i]);
-    if (!rec) { ++errors; continue; }
+    if (!rec) {
+      ++errors;
+      continue;
+    }
 
     const std::string stem = fs::path(rec->filename).stem().string();
     const fs::path destPath = fs::path(preset_.targetPath) / (stem + ".jpg");
 
     if (fs::exists(destPath)) {
-      if (skipAll) { continue; }
+      if (skipAll) {
+        continue;
+      }
       if (!overwriteAll) {
-        const util::OverwriteChoice choice = conflictCb_
-            ? conflictCb_(destPath.filename().string())
-            : util::OverwriteChoice::Skip;
-        if (choice == util::OverwriteChoice::SkipAll) { skipAll = true; continue; }
-        if (choice == util::OverwriteChoice::Skip)    { continue; }
-        if (choice == util::OverwriteChoice::OverwriteAll) { overwriteAll = true; }
+        const util::OverwriteChoice choice =
+          conflictCb_ ? conflictCb_(destPath.filename().string()) : util::OverwriteChoice::Skip;
+        if (choice == util::OverwriteChoice::SkipAll) {
+          skipAll = true;
+          continue;
+        }
+        if (choice == util::OverwriteChoice::Skip) {
+          continue;
+        }
+        if (choice == util::OverwriteChoice::OverwriteAll) {
+          overwriteAll = true;
+        }
       }
     }
 
