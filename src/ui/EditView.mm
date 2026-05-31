@@ -168,11 +168,13 @@ void EditView::open(int64_t photoId) {
     origW_ = rec->widthPx;
     origH_ = rec->heightPx;
     thumbIsPreCropped_ = rec->thumbPath.find("thumbs_edit") != std::string::npos;
+    picked_ = rec->picked != 0;
   } else {
     settings_ = {};
     origW_ = 0;
     origH_ = 0;
     thumbIsPreCropped_ = false;
+    picked_ = false;
   }
   saved_ = settings_;
 
@@ -191,6 +193,16 @@ void EditView::open(int64_t photoId) {
 
 void EditView::close() {
   open_ = false;
+}
+
+void EditView::togglePick() {
+  picked_ = !picked_;
+  const int newPicked = picked_ ? 1 : 0;
+  if (registry_) {
+    registry_->dispatch("catalog.pick", {{"id", photoId_}, {"picked", newPicked}});
+  } else {
+    repo_.updatePicked(photoId_, newPicked);
+  }
 }
 
 void EditView::setMode(EditMode mode) {
@@ -793,6 +805,9 @@ bool EditView::handleKeyCapture(ImVec2 scr) {
     if (ImGui::IsKeyPressed(ImGuiKey_F)) {
       closed = true;
     }
+    if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent)) {
+      togglePick();
+    }
   }
   ImGui::End();
   if (closed) {
@@ -884,6 +899,9 @@ void EditView::renderControlPanel(ImVec2 scr, float previewW) {
   ImGui::Begin("##editpanel", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                  ImGuiWindowFlags_NoScrollbar);
+  if (picked_) {
+    ImGui::TextColored({0.9f, 0.85f, 0.3f, 1.f}, "* Picked");
+  }
   renderModeTabs();
   renderSaveButtons(scr);
   ImGui::End();

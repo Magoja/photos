@@ -63,6 +63,7 @@ class EditView {
   bool open_ = false;
   bool justOpened_ = false;
   bool thumbIsPreCropped_ = false;
+  bool picked_ = false;
   int64_t photoId_ = 0;
   EditMode mode_ = EditMode::Adjust;
   bool tabSyncNeeded_ = false;
@@ -105,6 +106,7 @@ class EditView {
   const command::CommandRegistry* registry_ = nullptr;
 
   // helpers
+  void togglePick();
   void loadLibRawBackground(std::string srcPath);
   void pollLibRawLoad();
   void rebuildPreviewTexture();
