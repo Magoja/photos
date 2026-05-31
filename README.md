@@ -1,6 +1,6 @@
 # Photo Library
 
-A native macOS RAW photo library manager built with C++20, Metal, and Dear ImGui.
+A native macOS RAW photo library manager built with C++23, Metal, and Dear ImGui.
 
 ## Features
 

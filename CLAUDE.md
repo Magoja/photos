@@ -8,7 +8,7 @@ Claude will: read this file → implement the next `- [ ]` task → run verifica
 When fixing a crash or bug: implement the fix, build, run unit tests, and explain the change — but **do NOT commit** until the user confirms the fix works.
 
 ## Stack
-- C++20 + Obj-C++ (.mm) for macOS APIs (Metal, DiskArbitration, NSOpenPanel)
+- C++23 (.cpp) + Obj-C++ (.mm, compiled as C++20) for macOS APIs (Metal, DiskArbitration, NSOpenPanel). `main.mm` and `EditView.mm` are forced to C++23 in CMakeLists because they include `command/` headers that use `std::expected`.
 - Dear ImGui (git submodule `third_party/imgui`, docking branch) + SDL2 + Metal backend
 - LibRaw 0.21 (RAW decode + embedded JPEG thumb extraction)
 - libjpeg-turbo (thumbnail encode/decode, export JPEG)
@@ -37,7 +37,7 @@ ctest --preset debug --output-on-failure  # run tests
 - edit_settings: TEXT column, JSON blob via nlohmann/json — extensibility hook for future non-destructive edits
 - Metal textures: MTLStorageModeShared on Apple Silicon (unified memory, no blit needed)
 - LRU texture cache: 2000 slot cap; placeholder gray texture returned while async load is in flight
-- EditView::render() is a 5-line composition: `handleKeyCapture` → `renderPreviewArea` → `renderControlPanel` (→ `renderModeTabs`, `renderSaveButtons`) → `pollSaveCompletion`
+- EditView::render() is a thin composition: `pollLibRawLoad` → `handleKeyCapture` → `renderPreviewArea` → `renderControlPanel` (→ `renderModeTabs`, `renderSaveButtons`) → `pollSaveCompletion`
 
 ## Code style
 - **Single responsibility**: every function does exactly one thing.
@@ -75,6 +75,15 @@ ctest --preset debug --output-on-failure  # run tests
                                    └─ [18✓ Export v2]
                                        └─ C1→C7 (Command System)
 ```
+
+## Module map
+Source layout under `src/` (modules added after the task list above are included here):
+- `catalog/` — `Database` (raw SQLite, WAL, statement pool), `Schema`, `PhotoRepository`, `ThumbnailCache`, `BackupManager`, `EditSettings`
+- `import/` — `VolumeWatcher` (DiskArbitration), `FileScanner` (skips AppleDouble sidecars), `PreviewScanner` (import-UI previews), `RawDecoder`, `ImageDecoder` (generic JPEG/RAW source decode for export), `HashDedup`, `Importer`, `ExifParser`
+- `export/` — `Exporter`, `ExportSession`, `ExportPreset`
+- `command/` — `CommandRegistry`, `CommandResult`, `ICommandHandler`, `AppCommands` (startup registration of all handlers), `handlers/` (8 command handlers)
+- `ui/` — `Renderer`, `TextureManager`, `GridView`, `FolderTreePanel`, `FilterBar`, `FullscreenView`, `EditView`, `ImportDialog`, `ExportDialog`, `MetaSyncDialog`, `SettingsPanel`, `ThumbCropUV` + `ThumbEditApplier` (grid thumbnail crop/edit preview)
+- `util/` — `Platform`, `ThreadPool`, `PixelPipeline` (exposure/temp/contrast/saturation), `ImageLoader` (libjpeg-turbo fallback when LibRaw rejects a file)
 
 ## Tasks
 
