@@ -148,68 +148,68 @@ static void applyFilterMode(ui::FilterBar& filterBar, ui::GridView& grid,
   repo.setSetting("last_filter_mode", std::to_string(static_cast<int>(mode)));
 }
 
+static void loadMicroThumb(int64_t pid, const std::string& microPath, RenderCtx& ctx) {
+  if (microPath.empty()) { return; }
+  std::vector<uint8_t> rgba;
+  int w = 0, h = 0;
+  if (loadAndDecodeJpeg(microPath, rgba, w, h)) {
+    std::lock_guard lk(ctx.thumbMtx);
+    ctx.thumbResQ.push({pid + ui::GridView::kMicroOffset, std::move(rgba), w, h});
+  }
+}
+
+// Returns true if a thumb path was set (whether load succeeded or failed).
+// Returns false when no path exists, signalling the caller to run the slow path.
+// Does NOT fall through to slow path on load failure — that would overwrite an
+// edited thumbnail's DB entry with the original hash-based path, reverting edits.
+static bool loadStandardThumb(int64_t pid, const std::string& path, RenderCtx& ctx) {
+  if (path.empty()) { return false; }
+  std::vector<uint8_t> rgba;
+  int w = 0, h = 0;
+  if (loadAndDecodeJpeg(path, rgba, w, h)) {
+    std::lock_guard lk(ctx.thumbMtx);
+    ctx.thumbResQ.push({pid, std::move(rgba), w, h});
+  } else {
+    spdlog::warn("Thumb load failed for pid={}: {}", pid, path);
+  }
+  return true;
+}
+
+static void generateAndServeThumb(int64_t pid, RenderCtx& ctx) {
+  const auto rec = [&]() -> std::optional<catalog::PhotoRecord> {
+    std::lock_guard lk(ctx.db.mutex());
+    return ctx.repo.findById(pid);
+  }();
+  if (!rec) { return; }
+
+  const std::string srcPath = ctx.repo.fullPathFor(rec->folderId, rec->filename);
+  const auto dec = import_ns::RawDecoder::decode(srcPath);
+  if (!dec.ok || dec.thumbJpeg.empty()) { return; }
+
+  {
+    std::lock_guard lk(ctx.db.mutex());
+    ctx.thumbCache.generate(pid, rec->fileHash, dec.thumbJpeg, ctx.repo, dec.lumaScale);
+    ctx.thumbCache.generateMicro(pid, rec->fileHash, dec.thumbJpeg, ctx.repo, dec.lumaScale);
+  }
+
+  const std::string newPath = ctx.repo.getThumbPath(pid);
+  if (newPath.empty()) { return; }
+  std::vector<uint8_t> rgba;
+  int w = 0, h = 0;
+  if (loadAndDecodeJpeg(newPath, rgba, w, h)) {
+    std::lock_guard lk(ctx.thumbMtx);
+    ctx.thumbResQ.push({pid, std::move(rgba), w, h});
+  }
+}
+
 static void setupThumbMissCallback(RenderCtx& ctx, util::ThreadPool& thumbPool) {
   ctx.grid.setThumbMissCallback(
     [&](int64_t pid, std::string path, std::string microPath) {
       thumbPool.submit([pid, path = std::move(path), microPath = std::move(microPath),
                         &ctx]() {
-        // Micro load (fast path — tiny file, nearly always cache-hit after first import)
-        if (!microPath.empty()) {
-          std::vector<uint8_t> rgba;
-          int w = 0, h = 0;
-          if (loadAndDecodeJpeg(microPath, rgba, w, h)) {
-            std::lock_guard lk(ctx.thumbMtx);
-            ctx.thumbResQ.push({pid + ui::GridView::kMicroOffset, std::move(rgba), w, h});
-          }
-        }
-
-        // Standard load: fast path if file already cached on disk
-        if (!path.empty()) {
-          std::vector<uint8_t> rgba;
-          int w = 0, h = 0;
-          if (loadAndDecodeJpeg(path, rgba, w, h)) {
-            std::lock_guard lk(ctx.thumbMtx);
-            ctx.thumbResQ.push({pid, std::move(rgba), w, h});
-            return;
-          }
-          // Path was set but file missing or unreadable — do NOT fall through
-          // to slow path: that would overwrite an edited thumbnail's DB entry
-          // with the original hash-based path, silently reverting edits.
-          spdlog::warn("Thumb load failed for pid={}: {}", pid, path);
-          return;
-        }
-
-        // Slow path: no thumb path in DB — decode source and generate for the first time
-        auto rec = [&]() -> std::optional<catalog::PhotoRecord> {
-          std::lock_guard lk(ctx.db.mutex());
-          return ctx.repo.findById(pid);
-        }();
-        if (!rec) {
-          return;
-        }
-
-        std::string srcPath = ctx.repo.fullPathFor(rec->folderId, rec->filename);
-        auto dec = import_ns::RawDecoder::decode(srcPath);
-        if (!dec.ok || dec.thumbJpeg.empty()) {
-          return;
-        }
-
-        {
-          std::lock_guard lk(ctx.db.mutex());
-          ctx.thumbCache.generate(pid, rec->fileHash, dec.thumbJpeg, ctx.repo, dec.lumaScale);
-          ctx.thumbCache.generateMicro(pid, rec->fileHash, dec.thumbJpeg, ctx.repo, dec.lumaScale);
-        }
-
-        // Now serve the freshly written standard file
-        std::string newPath = ctx.repo.getThumbPath(pid);
-        if (newPath.empty()) {
-          return;
-        }
-        std::vector<uint8_t> rgba;
-        int w = 0, h = 0;
-        if (loadAndDecodeJpeg(newPath, rgba, w, h)) {
-          std::lock_guard lk(ctx.thumbMtx);
-          ctx.thumbResQ.push({pid, std::move(rgba), w, h});
+        loadMicroThumb(pid, microPath, ctx);
+        if (!loadStandardThumb(pid, path, ctx)) {
+          generateAndServeThumb(pid, ctx);
         }
       });
     });

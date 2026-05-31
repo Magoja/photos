@@ -44,7 +44,8 @@ ctest --preset debug --output-on-failure  # run tests
   Extract a block into a named helper if ANY of these apply:
   (a) it needs an explanatory comment to understand;
   (b) it performs a distinguishable named action (e.g. "toggle pick", "copy file", "parse timestamp");
-  (c) it could be tested independently.
+  (c) it could be tested independently;
+  (d) the function body exceeds ~15 lines — treat length as a signal that multiple responsibilities have accumulated.
   Prefer private methods for class member access, free functions otherwise.
 - **`const` correctness**: mark every variable, parameter, and method `const` unless it must be
   mutated. Use `const auto` for local variables by default; only drop `const` when assignment or
