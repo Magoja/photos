@@ -93,8 +93,9 @@ CREATE TABLE IF NOT EXISTS backup_log (
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXISTS idx_photos_folder   ON photos(folder_id);
-CREATE INDEX IF NOT EXISTS idx_photos_hash     ON photos(file_hash);
+CREATE INDEX IF NOT EXISTS idx_photos_folder        ON photos(folder_id);
+CREATE INDEX IF NOT EXISTS idx_photos_hash          ON photos(file_hash);
+CREATE INDEX IF NOT EXISTS idx_photos_filename_size ON photos(filename, file_size);
 CREATE INDEX IF NOT EXISTS idx_photos_capture  ON photos(capture_time);
 CREATE INDEX IF NOT EXISTS idx_photos_picked   ON photos(picked);
 CREATE INDEX IF NOT EXISTS idx_photos_import   ON photos(import_time);

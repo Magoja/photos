@@ -77,7 +77,7 @@ class EditView {
   MTLTexturePtr previewTex_   = nullptr;
   bool          previewDirty_ = false;
 
-  int    aspectMode_ = 0;  // 0=Free,1=Original,2=1:1,3=2:3,4=3:2
+  int    aspectMode_ = 1;  // 0=Free,1=Original,2=1:1,3=2:3,4=3:2
   bool   straightenDragging_ = false;
   int    dragHandle_ = -1;
   ImVec2 dragStart_  = {};

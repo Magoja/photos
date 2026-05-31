@@ -549,6 +549,12 @@ int main(int /*argc*/, char** /*argv*/) {
   // Migrate old thumb_path entries that used the old app bundle identifier
   db.exec("UPDATE photos SET thumb_path = REPLACE(thumb_path, '/PhotoLibrary/', "
           "'/com.jakeutil.photos/') WHERE thumb_path LIKE '%/PhotoLibrary/%'");
+
+  // Repair photos imported to "unknown" folder due to missing EXIF timestamps.
+  if (!libraryRoot.empty()) {
+    import_ns::Importer::repairUnknownFolder(db, libraryRoot);
+  }
+
   catalog::ThumbnailCache thumbCache(thumbDir);
   catalog::BackupManager backupMgr(db, dbPath, backupDir);
 

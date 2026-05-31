@@ -48,6 +48,10 @@ class Importer {
   // Request cancel; import will stop after current file
   void cancel();
 
+  // Re-decode photos in the "unknown" folder, move them to date folders, and update the DB.
+  // Runs synchronously. No-op if the "unknown" folder does not exist or is empty.
+  static void repairUnknownFolder(catalog::Database& db, const std::string& destPath);
+
   bool isRunning() const { return running_; }
   ImportStats stats() const { return stats_; }
 

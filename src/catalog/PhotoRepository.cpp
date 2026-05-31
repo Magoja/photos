@@ -305,6 +305,17 @@ std::optional<int64_t> PhotoRepository::findByHash(const std::string& hash) cons
   return std::nullopt;
 }
 
+std::optional<int64_t> PhotoRepository::findByFilenameAndSize(const std::string& filename,
+                                                                int64_t size) const {
+  auto s = db_.prepare("SELECT id FROM photos WHERE filename=? AND file_size=? LIMIT 1");
+  s.bind(1, filename);
+  s.bind(2, size);
+  if (s.step()) {
+    return s.getInt64(0);
+  }
+  return std::nullopt;
+}
+
 std::vector<int64_t> PhotoRepository::queryByFolder(int64_t folderId, bool pickedOnly) const {
   Stmt s =
     pickedOnly
@@ -398,6 +409,15 @@ void PhotoRepository::updateEditSettingsBulk(const std::vector<int64_t>& ids,
     s.step();
   }
   txn.commit();
+}
+
+void PhotoRepository::updateFolderAndCaptureTime(int64_t id, int64_t folderId,
+                                                  const std::string& captureTime) {
+  auto s = db_.prepare("UPDATE photos SET folder_id=?, capture_time=? WHERE id=?");
+  s.bind(1, folderId);
+  s.bind(2, captureTime);
+  s.bind(3, id);
+  s.step();
 }
 
 void PhotoRepository::clearAllThumbs() {

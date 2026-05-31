@@ -4,7 +4,6 @@
 #include "RawDecoder.h"
 #include <spdlog/spdlog.h>
 #include <filesystem>
-#include <unordered_set>
 
 namespace fs = std::filesystem;
 using namespace catalog;
@@ -155,7 +154,6 @@ void Importer::run() {
 
   PhotoRepository repo(db_);
   ThumbnailCache cache(opts_.thumbCacheRoot);
-  std::unordered_set<uint64_t> sessionFp;
 
   int done = 0;
   for (auto& sf : files) {
@@ -169,7 +167,16 @@ void Importer::run() {
     ++done;
 
     try {
-      sessionFp.insert(HashDedup::fastFingerprint(sf.path));
+      const auto fname = fs::path(sf.path).filename().string();
+      {
+        std::lock_guard lk(db_.mutex());
+        if (HashDedup::isKnownByNameAndSize(db_, fname, sf.size)) {
+          spdlog::debug("Import: skipped by name+size {}", fname);
+          ++stats_.duplicates;
+          continue;
+        }
+      }
+
       std::string hash = HashDedup::fullHash(sf.path);
 
       if (auto dup = dbDuplicateCheck(db_, hash)) {
@@ -231,6 +238,72 @@ void Importer::run() {
   if (doneCb_) {
     doneCb_(stats_);
   }
+}
+
+// ── Unknown folder repair ─────────────────────────────────────────────────────
+
+void Importer::repairUnknownFolder(catalog::Database& db, const std::string& destPath) {
+  catalog::PhotoRepository repo(db);
+
+  std::optional<catalog::FolderRecord> unknownFolder;
+  std::vector<int64_t> photoIds;
+  {
+    std::lock_guard lk(db.mutex());
+    unknownFolder = repo.findFolder("unknown");
+    if (!unknownFolder || unknownFolder->id == 0) { return; }
+    photoIds = repo.queryByFolder(unknownFolder->id, false);
+  }
+  if (photoIds.empty()) { return; }
+
+  spdlog::info("repairUnknownFolder: {} photos to repair", photoIds.size());
+  int fixed = 0;
+  int errors = 0;
+
+  for (const int64_t pid : photoIds) {
+    std::optional<catalog::PhotoRecord> photo;
+    {
+      std::lock_guard lk(db.mutex());
+      photo = repo.findById(pid);
+    }
+    if (!photo) { continue; }
+
+    const auto srcPath = destPath + "/unknown/" + photo->filename;
+    if (!fs::exists(srcPath)) { ++errors; continue; }
+
+    const auto dec = RawDecoder::decode(srcPath);
+    if (dec.exif.captureTime.size() < 10) { ++errors; continue; }
+
+    const auto dateStr  = dec.exif.captureTime.substr(0, 10);
+    const auto newDir   = destPath + "/" + dateStr;
+    const auto destFile = newDir + "/" + photo->filename;
+
+    std::error_code ec;
+    fs::create_directories(newDir, ec);
+    fs::rename(srcPath, destFile, ec);
+    if (ec) {
+      fs::copy_file(srcPath, destFile, fs::copy_options::overwrite_existing, ec);
+      if (ec) {
+        spdlog::warn("repairUnknownFolder: move failed for {}: {}", photo->filename, ec.message());
+        ++errors;
+        continue;
+      }
+      fs::remove(srcPath, ec);
+    }
+
+    int64_t newFid;
+    {
+      std::lock_guard lk(db.mutex());
+      catalog::FolderRecord folder;
+      folder.path = dateStr;
+      folder.name = dateStr;
+      newFid = repo.upsertFolder(folder);
+      repo.updateFolderAndCaptureTime(pid, newFid, dec.exif.captureTime);
+    }
+    ++fixed;
+    spdlog::debug("repairUnknownFolder: {} → {}", photo->filename, dateStr);
+  }
+
+  spdlog::info("repairUnknownFolder: fixed={} errors={}", fixed, errors);
 }
 
 }  // namespace import_ns

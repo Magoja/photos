@@ -61,6 +61,15 @@ void PreviewScanner::run(std::string sourcePath, ScanProgressCb progressCb, Item
     ++done;
 
     try {
+      const auto fname = fs::path(sf.path).filename().string();
+      {
+        std::lock_guard lk(db_.mutex());
+        if (HashDedup::isKnownByNameAndSize(db_, fname, sf.size)) {
+          spdlog::debug("PreviewScanner: skipped by name+size {}", fname);
+          continue;
+        }
+      }
+
       const auto hash = HashDedup::fullHash(sf.path);
       if (dbDupCheck(db_, hash)) {
         spdlog::debug("PreviewScanner: duplicate skipped {}", sf.path);

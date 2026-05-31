@@ -2,52 +2,32 @@
 #include "ThumbCropUV.h"
 #include "catalog/EditSettings.h"
 #include "util/PixelPipeline.h"
+#include "util/ImageLoader.h"
 #include "command/CommandRegistry.h"
-#include <libraw/libraw.h>
 #include <spdlog/spdlog.h>
 #include <algorithm>
 #include <ranges>
 
 namespace {
 
-// Shared LibRaw decode + tone-adjust + RGBA-convert used by both
-// startDecodeForCurrent and startPrefetch.
+// Decode image to RGBA using the unified ImageLoader (LibRaw → JPEG fallback),
+// apply tone adjustments, and signal completion via readyFlag.
 static void decodePhotoToRgba(const std::string& filePath,
                                const catalog::EditSettings& es,
                                std::atomic<bool>& cancelFlag,
                                std::vector<uint8_t>& outRgba, int& outW, int& outH,
                                std::atomic<bool>& readyFlag) {
-  auto raw = std::make_unique<LibRaw>();
-  raw->imgdata.params.output_bps    = 8;
-  raw->imgdata.params.use_camera_wb = 1;
-  if (raw->open_file(filePath.c_str()) != LIBRAW_SUCCESS ||
-      raw->unpack()                     != LIBRAW_SUCCESS ||
-      raw->dcraw_process()              != LIBRAW_SUCCESS) {
-    spdlog::warn("FullscreenView: LibRaw decode failed for {}", filePath);
+  const auto img = util::loadImageAsRgb(filePath, /*maxEdge=*/2000);
+  if (!img.ok()) {
     readyFlag = true;
     return;
   }
   if (cancelFlag.load()) { return; }
 
-  libraw_processed_image_t* img = raw->dcraw_make_mem_image();
-  if (!img || img->type != LIBRAW_IMAGE_BITMAP || img->colors != 3) {
-    if (img) { LibRaw::dcraw_clear_mem(img); }
-    readyFlag = true;
-    return;
-  }
-
-  constexpr int kMaxEdge = 2000;
-  const int scale = std::max(1, std::max(img->width, img->height) / kMaxEdge);
-  int dsW = 0, dsH = 0;
-  auto rgb = util::downsampleRgb(img->data, img->width, img->height, scale, dsW, dsH);
-  LibRaw::dcraw_clear_mem(img);
-
-  if (cancelFlag.load()) { return; }
-
-  const auto adjusted = util::applyAdjustments(rgb, dsW, dsH, es);
-  outRgba = util::rgbToRgba(adjusted, dsW * dsH);
-  outW = dsW;
-  outH = dsH;
+  const auto adjusted = util::applyAdjustments(img.pixels, img.width, img.height, es);
+  outRgba = util::rgbToRgba(adjusted, img.width * img.height);
+  outW = img.width;
+  outH = img.height;
 
   if (!cancelFlag.load()) {
     readyFlag = true;
@@ -318,7 +298,15 @@ void FullscreenView::drawPhoto(ImDrawList* dl, ImVec2 scrSz) const {
         cropAspect = (m.cropW * (float)rec->widthPx) /
                      (m.cropH * (float)rec->heightPx);
       } else {
-        cropAspect = m.cropW / m.cropH;
+        // Fall back to actual texture dimensions — covers JPEGs with no DB dimensions
+        auto [texW, texH] = texMgr_.getSize(currentId_ + kAdjOffset);
+        if (texW == 0 || texH == 0) {
+          std::tie(texW, texH) = texMgr_.getSize(currentId_);
+        }
+        if (texW > 0 && texH > 0) {
+          cropAspect = (m.cropW * static_cast<float>(texW)) /
+                       (m.cropH * static_cast<float>(texH));
+        }
       }
     }
   } else {

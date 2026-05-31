@@ -80,6 +80,7 @@ class PhotoRepository {
 
   std::optional<PhotoRecord> findById(int64_t id) const;
   std::optional<int64_t> findByHash(const std::string& hash) const;
+  std::optional<int64_t> findByFilenameAndSize(const std::string& filename, int64_t size) const;
   std::string getThumbPath(int64_t photoId) const;
   std::string getThumbMicroPath(int64_t photoId) const;
 
@@ -96,6 +97,7 @@ class PhotoRepository {
   void updateThumbMicro(int64_t id, const std::string& path);
   void updateEditSettings(int64_t id, const std::string& json);
   void updateEditSettingsBulk(const std::vector<int64_t>& ids, const std::string& json);
+  void updateFolderAndCaptureTime(int64_t id, int64_t folderId, const std::string& captureTime);
 
   // Clears all thumb_path / thumb_micro_path entries so thumbnails regenerate.
   void clearAllThumbs();

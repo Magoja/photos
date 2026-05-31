@@ -22,6 +22,12 @@ class HashDedup {
   // Check if the hash already exists in the DB
   // Returns photo_id if duplicate, nullopt otherwise
   static std::optional<int64_t> isDuplicate(catalog::Database& db, const std::string& hash);
+
+  // Fast pre-filter: returns photo_id if filename+size matches an existing record.
+  // Skips all file I/O; use before fullHash to short-circuit rescans of known files.
+  static std::optional<int64_t> isKnownByNameAndSize(catalog::Database& db,
+                                                      const std::string& filename,
+                                                      int64_t size);
 };
 
 }  // namespace import_ns

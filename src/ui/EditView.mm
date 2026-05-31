@@ -4,10 +4,10 @@
 #include "EditView.h"
 #include "command/CommandRegistry.h"
 #include "util/PixelPipeline.h"
+#include "util/ImageLoader.h"
 #include "import/RawDecoder.h"
 #include "util/Platform.h"
 
-#include <libraw/libraw.h>
 #include <turbojpeg.h>
 #include <spdlog/spdlog.h>
 
@@ -51,6 +51,42 @@ static std::array<ImVec2, 8> cropHandlePositions(float cx, float cy, float cw, f
     {cx+cw/2, cy+ch},     // B
     {cx+cw,   cy+ch},     // BR
   }};
+}
+
+// When the image is rotated by angleDeg, the crop box corners map back to source
+// pixels outside [0,1]×[0,1] if the box is too large.  This shrinks the box (keeping
+// its center fixed and preserving its aspect ratio) so all four rotated corners remain
+// inside the image.
+// imgAspect = srcW / srcH (used to convert normalized coords to pixel space).
+static void clampCropForAngle(catalog::CropRect& crop, float angleDeg, float imgAspect) {
+  if (angleDeg == 0.f || imgAspect <= 0.f) { return; }
+  const float theta = std::abs(angleDeg) * (std::numbers::pi_v<float> / 180.f);
+  const float cosT  = std::cos(theta);
+  const float sinT  = std::sin(theta);
+
+  // Crop center and available half-sizes to each image edge (normalized).
+  const float cx    = crop.x + crop.w * 0.5f;
+  const float cy    = crop.y + crop.h * 0.5f;
+  const float maxHx = std::min(cx, 1.f - cx);
+  const float maxHy = std::min(cy, 1.f - cy);
+  const float hw    = crop.w * 0.5f;
+  const float hh    = crop.h * 0.5f;
+
+  // Pixel-space constraints (normalized × aspect cancels to pure normalized):
+  //   hw·cos(θ) + hh/A·sin(θ) ≤ maxHx
+  //   hw·A·sin(θ) + hh·cos(θ) ≤ maxHy
+  const float reqX = hw * cosT + hh / imgAspect * sinT;
+  const float reqY = hw * imgAspect * sinT + hh * cosT;
+  if (reqX <= maxHx && reqY <= maxHy) { return; }
+
+  const float scaleX = (reqX > 1e-6f) ? maxHx / reqX : 1.f;
+  const float scaleY = (reqY > 1e-6f) ? maxHy / reqY : 1.f;
+  const float scale  = std::min({scaleX, scaleY, 1.f});
+
+  crop.w = hw * 2.f * scale;
+  crop.h = hh * 2.f * scale;
+  crop.x = cx - crop.w * 0.5f;
+  crop.y = cy - crop.h * 0.5f;
 }
 
 static id<MTLTexture> rgbaToTexture(id<MTLDevice> dev,
@@ -107,7 +143,7 @@ void EditView::open(int64_t photoId) {
   mode_          = EditMode::Adjust;
   tabSyncNeeded_ = false;
   dragHandle_ = -1;
-  aspectMode_ = 0;
+  aspectMode_ = 1;
 
   // Clear source pixels and release both Metal textures from the previous photo
   // so drawPreview shows nothing until the new decode completes.
@@ -164,36 +200,12 @@ void EditView::setMode(EditMode mode) {
 // so the preview and the exported JPEG start from the same pixel values.
 // Writes to pendingRgb_/pendingW_/pendingH_, then sets fullDecodeReady_ = true.
 void EditView::loadLibRawBackground(std::string srcPath) {
-  auto raw = std::make_unique<LibRaw>();
-  raw->imgdata.params.output_bps    = 8;
-  raw->imgdata.params.use_camera_wb = 1;
-  if (raw->open_file(srcPath.c_str()) != LIBRAW_SUCCESS ||
-      raw->unpack()                    != LIBRAW_SUCCESS ||
-      raw->dcraw_process()             != LIBRAW_SUCCESS) {
-    spdlog::warn("EditView: LibRaw decode failed for {}", srcPath);
-    fullDecodeReady_ = true;
-    return;
+  const auto img = util::loadImageAsRgb(srcPath, /*maxEdge=*/2000);
+  if (img.ok()) {
+    pendingRgb_ = img.pixels;
+    pendingW_   = img.width;
+    pendingH_   = img.height;
   }
-  if (fullDecodeCancel_.load()) { return; }
-
-  libraw_processed_image_t* img = raw->dcraw_make_mem_image();
-  if (!img || img->type != LIBRAW_IMAGE_BITMAP || img->colors != 3) {
-    if (img) { LibRaw::dcraw_clear_mem(img); }
-    spdlog::warn("EditView: unexpected LibRaw image format for {}", srcPath);
-    fullDecodeReady_ = true;
-    return;
-  }
-
-  // Downsample to ≤2000px on the long edge for fast interactive editing.
-  // Box-filter averaging is linear and preserves tonal response.
-  constexpr int kMaxEdge = 2000;
-  const int scale = std::max(1, std::max(img->width, img->height) / kMaxEdge);
-  const auto dsRgb = util::downsampleRgb(img->data, img->width, img->height, scale,
-                                         pendingW_, pendingH_);
-  LibRaw::dcraw_clear_mem(img);
-
-  pendingRgb_ = dsRgb;
-
   if (!fullDecodeCancel_.load()) {
     fullDecodeReady_ = true;
   }
@@ -495,8 +507,15 @@ void EditView::renderStraightenBar(float previewW, float screenH) {
   ImGui::PushItemWidth(previewW - 160.f);
   ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 18.f);
   ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.f, 8.f));
-  ImGui::SliderFloat("##straighten", &settings_.crop.angleDeg, -45.f, 45.f, "%.1f°");
+  const bool angleChanged =
+      ImGui::SliderFloat("##straighten", &settings_.crop.angleDeg, -45.f, 45.f, "%.1f°");
   straightenDragging_ = ImGui::IsItemActive();
+  if (angleChanged) {
+    const float aspect = (srcW_ > 0 && srcH_ > 0)   ? (float)srcW_ / (float)srcH_
+                       : (origW_ > 0 && origH_ > 0)  ? (float)origW_ / (float)origH_
+                       : 1.f;
+    clampCropForAngle(settings_.crop, settings_.crop.angleDeg, aspect);
+  }
   ImGui::PopStyleVar(2);
   ImGui::PopItemWidth();
   ImGui::SameLine(0.f, 12.f);

@@ -8,6 +8,10 @@
 #include <cmath>
 #include <algorithm>
 #include <memory>
+#include <chrono>
+#include <filesystem>
+#include <span>
+#include <vector>
 
 namespace import_ns {
 
@@ -146,6 +150,129 @@ static float computeRawLumaScale(LibRaw& raw, const std::vector<uint8_t>& thumbJ
   return scale;
 }
 
+// ── JPEG EXIF fallback reader ─────────────────────────────────────────────────
+//
+// LibRaw populates io.timestamp reliably for RAW formats but often returns 0 for
+// plain JPEG files.  These helpers parse the JPEG APP1 EXIF segment directly.
+
+namespace fs = std::filesystem;
+
+static uint16_t tiffU16(std::span<const uint8_t> d, size_t off, bool be) {
+  if (off + 2 > d.size()) { return 0; }
+  return be ? static_cast<uint16_t>(d[off] << 8 | d[off + 1])
+            : static_cast<uint16_t>(d[off + 1] << 8 | d[off]);
+}
+
+static uint32_t tiffU32(std::span<const uint8_t> d, size_t off, bool be) {
+  if (off + 4 > d.size()) { return 0; }
+  return be ? (uint32_t(d[off]) << 24 | uint32_t(d[off + 1]) << 16 |
+               uint32_t(d[off + 2]) << 8 | d[off + 3])
+            : (uint32_t(d[off + 3]) << 24 | uint32_t(d[off + 2]) << 16 |
+               uint32_t(d[off + 1]) << 8 | d[off]);
+}
+
+// Searches `ifd` (offset from tiff start) for an ASCII tag. Returns value or "".
+static std::string tiffAsciiTag(std::span<const uint8_t> tiff, uint32_t ifdOff, bool be,
+                                 uint16_t wantTag) {
+  if (ifdOff + 2 > tiff.size()) { return ""; }
+  const uint16_t count = tiffU16(tiff, ifdOff, be);
+  for (uint16_t i = 0; i < count; ++i) {
+    const size_t e = ifdOff + 2 + size_t(i) * 12;
+    if (e + 12 > tiff.size()) { break; }
+    const uint16_t tag  = tiffU16(tiff, e, be);
+    const uint16_t type = tiffU16(tiff, e + 2, be);
+    const uint32_t cnt  = tiffU32(tiff, e + 4, be);
+    if (tag != wantTag || type != 2 || cnt == 0) { continue; }
+    const size_t len = cnt - 1;  // exclude null terminator
+    if (cnt <= 4) {
+      return std::string(reinterpret_cast<const char*>(tiff.data() + e + 8), len);
+    }
+    const uint32_t valOff = tiffU32(tiff, e + 8, be);
+    if (valOff + cnt > tiff.size()) { return ""; }
+    return std::string(reinterpret_cast<const char*>(tiff.data() + valOff), len);
+  }
+  return "";
+}
+
+// Returns DateTimeOriginal (or fallbacks) from raw TIFF bytes, in EXIF string format.
+static std::string parseTiffDate(std::span<const uint8_t> tiff) {
+  if (tiff.size() < 8) { return ""; }
+  const bool be = (tiff[0] == 0x4D && tiff[1] == 0x4D);
+  if (tiffU16(tiff, 2, be) != 42) { return ""; }
+  const uint32_t ifd0 = tiffU32(tiff, 4, be);
+
+  // Check ExifIFD sub-IFD (tag 0x8769) for DateTimeOriginal (0x9003).
+  const uint16_t count = tiffU16(tiff, ifd0, be);
+  for (uint16_t i = 0; i < count; ++i) {
+    const size_t e = ifd0 + 2 + size_t(i) * 12;
+    if (e + 12 > tiff.size()) { break; }
+    if (tiffU16(tiff, e, be) == 0x8769) {
+      const uint32_t exifIfd = tiffU32(tiff, e + 8, be);
+      const auto dt = tiffAsciiTag(tiff, exifIfd, be, 0x9003);
+      if (!dt.empty()) { return dt; }
+      const auto dtd = tiffAsciiTag(tiff, exifIfd, be, 0x9004);
+      if (!dtd.empty()) { return dtd; }
+      break;
+    }
+  }
+
+  // Fall back to DateTimeOriginal or DateTime in main IFD.
+  const auto dt0 = tiffAsciiTag(tiff, ifd0, be, 0x9003);
+  if (!dt0.empty()) { return dt0; }
+  return tiffAsciiTag(tiff, ifd0, be, 0x0132);
+}
+
+// Parses JPEG markers to find the APP1 EXIF segment and extract the date string.
+// Returns "YYYY:MM:DD HH:MM:SS" on success, "" on failure.
+static std::string readJpegExifDateString(const std::string& path) {
+  FILE* f = std::fopen(path.c_str(), "rb");
+  if (!f) { return ""; }
+  struct Guard { FILE* fp; ~Guard() { std::fclose(fp); } } g{f};
+
+  uint8_t soi[2];
+  if (std::fread(soi, 1, 2, f) != 2 || soi[0] != 0xFF || soi[1] != 0xD8) { return ""; }
+
+  while (true) {
+    uint8_t hdr[4];
+    if (std::fread(hdr, 1, 4, f) != 4 || hdr[0] != 0xFF) { break; }
+    const uint8_t  marker  = hdr[1];
+    const uint16_t seglen  = static_cast<uint16_t>(hdr[2] << 8 | hdr[3]);
+    if (seglen < 2) { break; }
+    const uint16_t datalen = seglen - 2;
+    if (marker == 0xD9 || marker == 0xDA) { break; }
+
+    if (marker == 0xE1 && datalen >= 6) {
+      uint8_t exifHdr[6];
+      if (std::fread(exifHdr, 1, 6, f) != 6) { break; }
+      const uint16_t rem = datalen - 6;
+      if (std::memcmp(exifHdr, "Exif\0\0", 6) == 0 && rem >= 8) {
+        std::vector<uint8_t> tiff(rem);
+        if (std::fread(tiff.data(), 1, rem, f) != rem) { break; }
+        return parseTiffDate(tiff);
+      }
+      if (std::fseek(f, rem, SEEK_CUR) != 0) { break; }
+    } else {
+      if (std::fseek(f, datalen, SEEK_CUR) != 0) { break; }
+    }
+  }
+  return "";
+}
+
+// Returns ISO 8601 capture time derived from the file's modification time.
+static std::string filemtimeToIso(const std::string& path) {
+  std::error_code ec;
+  const auto mtime = fs::last_write_time(path, ec);
+  if (ec) { return ""; }
+  const auto sctp = std::chrono::file_clock::to_sys(mtime);
+  const auto secs = std::chrono::time_point_cast<std::chrono::seconds>(sctp);
+  const std::time_t tt = static_cast<std::time_t>(secs.time_since_epoch().count());
+  char buf[20] = {};
+  if (const struct tm* t = gmtime(&tt)) {
+    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", t);
+  }
+  return buf;
+}
+
 // ── EXIF + GPS extraction ─────────────────────────────────────────────────────
 
 static void extractExif(LibRaw& raw, ExifData& ex) {
@@ -190,6 +317,23 @@ static void extractThumbnail(LibRaw& raw, DecodeResult& result) {
   }
 }
 
+// Reads the raw bytes of a file only if it begins with a JPEG SOI marker (FF D8).
+// Used to populate thumbJpeg for plain JPEG inputs that LibRaw cannot open.
+static std::vector<uint8_t> readJpegFileBytes(const std::string& path) {
+  FILE* f = std::fopen(path.c_str(), "rb");
+  if (!f) { return {}; }
+  struct Guard { FILE* fp; ~Guard() { std::fclose(fp); } } g{f};
+  uint8_t soi[2] = {};
+  if (std::fread(soi, 1, 2, f) != 2 || soi[0] != 0xFF || soi[1] != 0xD8) { return {}; }
+  std::fseek(f, 0, SEEK_END);
+  const long sz = std::ftell(f);
+  std::fseek(f, 0, SEEK_SET);
+  if (sz <= 0) { return {}; }
+  std::vector<uint8_t> bytes(static_cast<size_t>(sz));
+  std::fread(bytes.data(), 1, bytes.size(), f);
+  return bytes;
+}
+
 // ── RawDecoder ────────────────────────────────────────────────────────────────
 
 DecodeResult RawDecoder::decode(const std::string& filePath) {
@@ -200,10 +344,35 @@ DecodeResult RawDecoder::decode(const std::string& filePath) {
   if (rc != LIBRAW_SUCCESS) {
     result.error = libraw_strerror(rc);
     spdlog::warn("RawDecoder: open_file({}) failed: {}", filePath, result.error);
+    result.exif.captureTime = exifDateToIso(readJpegExifDateString(filePath).c_str());
+    if (result.exif.captureTime.empty()) {
+      result.exif.captureTime = filemtimeToIso(filePath);
+    }
+    result.thumbJpeg = readJpegFileBytes(filePath);
+    if (!result.thumbJpeg.empty()) {
+      result.ok = true;
+      if (tjhandle tj = tjInitDecompress()) {
+        int w = 0, h = 0, ss = 0, cs = 0;
+        if (tjDecompressHeader3(tj, result.thumbJpeg.data(),
+                                static_cast<unsigned long>(result.thumbJpeg.size()),
+                                &w, &h, &ss, &cs) >= 0) {
+          result.exif.widthPx  = w;
+          result.exif.heightPx = h;
+        }
+        tjDestroy(tj);
+      }
+    }
     return result;
   }
 
   extractExif(*raw, result.exif);
+  if (result.exif.captureTime.empty()) {
+    const auto dtStr = readJpegExifDateString(filePath);
+    result.exif.captureTime = exifDateToIso(dtStr.c_str());
+  }
+  if (result.exif.captureTime.empty()) {
+    result.exif.captureTime = filemtimeToIso(filePath);
+  }
   extractThumbnail(*raw, result);
 
   if (!result.thumbJpeg.empty()) {
