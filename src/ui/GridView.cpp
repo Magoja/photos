@@ -162,6 +162,15 @@ static std::pair<float, float> computeLetterboxSize(int tw, int th, float thumbW
 
 // ── render ────────────────────────────────────────────────────────────────────
 
+void GridView::renderEmptyState() const {
+  const char* msg = (filter_ == FilterMode::Picked) ? "No picked photos in this folder"
+                                                    : "No photos in this folder";
+  const ImVec2 avail = ImGui::GetContentRegionAvail();
+  const ImVec2 textSz = ImGui::CalcTextSize(msg);
+  ImGui::SetCursorPos({(avail.x - textSz.x) * 0.5f, (avail.y - textSz.y) * 0.5f});
+  ImGui::TextDisabled("%s", msg);
+}
+
 void GridView::render() {
   // "N selected" label when multiple photos are selected
   const size_t totalSel = selectionCount();
@@ -169,6 +178,11 @@ void GridView::render() {
     ImGui::TextColored({0.4f, 0.8f, 1.f, 1.f}, "%zu selected", totalSel);
     ImGui::SameLine();
     ImGui::Dummy({0.f, 0.f});
+  }
+
+  if (photoIds_.empty()) {
+    renderEmptyState();
+    return;
   }
 
   float thumbW = kThumbBase * thumbScale_;

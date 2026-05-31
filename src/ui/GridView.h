@@ -90,6 +90,7 @@ class GridView {
 
   float thumbScale_ = 1.f;
 
+  void renderEmptyState() const;
   void handleCellClick(int64_t pid);
   void applyRangeSelect(int64_t fromId, int64_t toId);
 
