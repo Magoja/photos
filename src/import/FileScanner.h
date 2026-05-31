@@ -21,6 +21,9 @@ class FileScanner {
 
   // Check if a file extension is supported
   static bool isSupported(const std::string& ext);
+
+  // Check if a path refers to a JPEG file (.jpg / .jpeg, case-insensitive)
+  static bool isJpeg(const std::string& path);
 };
 
 }  // namespace import_ns

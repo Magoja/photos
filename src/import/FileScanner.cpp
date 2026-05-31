@@ -15,9 +15,18 @@ const std::vector<std::string>& FileScanner::supportedExtensions() {
   return exts;
 }
 
+static bool isAppleDoubleSidecar(const std::string& filename) {
+  return filename.starts_with("._");
+}
+
 static std::string toLower(std::string s) {
   std::ranges::transform(s, s.begin(), [](unsigned char c) { return std::tolower(c); });
   return s;
+}
+
+bool FileScanner::isJpeg(const std::string& path) {
+  const auto ext = toLower(fs::path(path).extension().string());
+  return ext == ".jpg" || ext == ".jpeg";
 }
 
 bool FileScanner::isSupported(const std::string& ext) {
@@ -40,6 +49,9 @@ std::vector<ScannedFile> FileScanner::scan(const std::string& rootPath,
       continue;
     }
     auto& p = entry.path();
+    if (isAppleDoubleSidecar(p.filename().string())) {
+      continue;
+    }
     if (!isSupported(p.extension().string())) {
       continue;
     }

@@ -23,6 +23,7 @@
 #include "catalog/BackupManager.h"
 
 // Import
+#include "import/FileScanner.h"
 #include "import/VolumeWatcher.h"
 #include "import/Importer.h"
 #include "import/RawDecoder.h"
@@ -179,6 +180,14 @@ static bool loadStandardThumb(int64_t pid, const std::string& path, RenderCtx& c
   return true;
 }
 
+static std::vector<uint8_t> readFileBytes(const std::string& path) {
+  std::ifstream f(path, std::ios::binary);
+  if (!f) {
+    return {};
+  }
+  return std::vector<uint8_t>((std::istreambuf_iterator<char>(f)), {});
+}
+
 static void generateAndServeThumb(int64_t pid, RenderCtx& ctx) {
   const auto rec = [&]() -> std::optional<catalog::PhotoRecord> {
     std::lock_guard lk(ctx.db.mutex());
@@ -189,15 +198,28 @@ static void generateAndServeThumb(int64_t pid, RenderCtx& ctx) {
   }
 
   const std::string srcPath = ctx.repo.fullPathFor(rec->folderId, rec->filename);
-  const auto dec = import_ns::RawDecoder::decode(srcPath);
-  if (!dec.ok || dec.thumbJpeg.empty()) {
+  std::vector<uint8_t> thumbJpeg;
+  float lumaScale = 1.0f;
+
+  if (import_ns::FileScanner::isJpeg(rec->filename)) {
+    thumbJpeg = readFileBytes(srcPath);
+  } else {
+    const auto dec = import_ns::RawDecoder::decode(srcPath);
+    if (!dec.ok || dec.thumbJpeg.empty()) {
+      return;
+    }
+    thumbJpeg = dec.thumbJpeg;
+    lumaScale = dec.lumaScale;
+  }
+
+  if (thumbJpeg.empty()) {
     return;
   }
 
   {
     std::lock_guard lk(ctx.db.mutex());
-    ctx.thumbCache.generate(pid, rec->fileHash, dec.thumbJpeg, ctx.repo, dec.lumaScale);
-    ctx.thumbCache.generateMicro(pid, rec->fileHash, dec.thumbJpeg, ctx.repo, dec.lumaScale);
+    ctx.thumbCache.generate(pid, rec->fileHash, thumbJpeg, ctx.repo, lumaScale);
+    ctx.thumbCache.generateMicro(pid, rec->fileHash, thumbJpeg, ctx.repo, lumaScale);
   }
 
   const std::string newPath = ctx.repo.getThumbPath(pid);
@@ -361,7 +383,7 @@ static void processGlobalHotkeys(RenderCtx& ctx) {
   if (ImGui::IsKeyPressed(ImGuiKey_R)) {
     openOrSwitchEditMode(ctx.fullscreen, ctx.editView, selId, ui::EditMode::Crop);
   }
-  if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent)) {
+  if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent) && !ctx.editView.isOpen()) {
     togglePickSelection(ctx);
   }
   if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
