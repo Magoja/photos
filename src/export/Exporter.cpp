@@ -1,8 +1,7 @@
 #include "Exporter.h"
 #include "util/PixelPipeline.h"
 #include "catalog/EditSettings.h"
-#include "import/RawDecoder.h"
-#include <libraw/libraw.h>
+#include "import/ImageDecoder.h"
 #include <turbojpeg.h>
 #include <spdlog/spdlog.h>
 #include <filesystem>
@@ -346,44 +345,20 @@ static std::vector<uint8_t> injectExifApp1(const std::vector<uint8_t>& jpeg,
 bool Exporter::exportOne(const PhotoRecord& rec, const fs::path& destPath) {
   const std::string srcPath = repo_.fullPathFor(rec.folderId, rec.filename);
 
-  // 1. Full-res decode using LibRaw (heap-allocated: LibRaw is ~750 KB on stack)
-  auto raw = std::make_unique<LibRaw>();
-  if (raw->open_file(srcPath.c_str()) != LIBRAW_SUCCESS) {
-    spdlog::warn("Export: LibRaw open failed for {}", srcPath);
+  // 1. Decode source pixels (JPEG via TurboJPEG or RAW via LibRaw)
+  const auto decoded = import_ns::decodeSource(srcPath);
+  if (!decoded) {
     return false;
   }
-  if (raw->unpack() != LIBRAW_SUCCESS) {
-    spdlog::warn("Export: LibRaw unpack failed for {}", srcPath);
-    return false;
-  }
-  raw->imgdata.params.output_bps = 8;
-  raw->imgdata.params.use_camera_wb = 1;
-  if (raw->dcraw_process() != LIBRAW_SUCCESS) {
-    spdlog::warn("Export: LibRaw dcraw_process failed for {}", srcPath);
-    return false;
-  }
-
-  libraw_processed_image_t* img = raw->dcraw_make_mem_image();
-  if (!img || img->type != LIBRAW_IMAGE_BITMAP || img->colors != 3) {
-    if (img) {
-      LibRaw::dcraw_clear_mem(img);
-    }
-    spdlog::warn("Export: LibRaw image format unexpected for {}", srcPath);
-    return false;
-  }
-
-  const int srcW = img->width;
-  const int srcH = img->height;
-  const std::vector<uint8_t> rgb(img->data, img->data + static_cast<size_t>(srcW * srcH * 3));
-  LibRaw::dcraw_clear_mem(img);
 
   // 2. Apply EditSettings
   const EditSettings settings = EditSettings::fromJson(rec.editSettings);
-  const auto adjusted = applyAdjustments(rgb, srcW, srcH, settings);
+  const auto adjusted = applyAdjustments(decoded->rgb, decoded->w, decoded->h, settings);
 
   // 3. Apply crop + straighten
-  int outW = srcW, outH = srcH;
-  const auto cropped = util::cropAndRotatePixels(adjusted, srcW, srcH, settings.crop, outW, outH);
+  int outW = decoded->w, outH = decoded->h;
+  const auto cropped =
+    util::cropAndRotatePixels(adjusted, decoded->w, decoded->h, settings.crop, outW, outH);
 
   // 4. Compress to JPEG
   auto jpeg = compressToJpeg(cropped, outW, outH, preset_.quality);

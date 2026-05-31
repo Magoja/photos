@@ -74,6 +74,7 @@ set(CATALOG_SOURCES
 set(IMPORT_SOURCES
     src/import/VolumeWatcher.mm
     src/import/FileScanner.cpp
+    src/import/ImageDecoder.cpp
     src/import/RawDecoder.cpp
     src/import/HashDedup.cpp
     src/import/Importer.cpp
