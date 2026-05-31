@@ -134,12 +134,10 @@ static void openOrSwitchEditMode(ui::FullscreenView& fullscreen, ui::EditView& e
                                  int64_t selId, ui::EditMode mode) {
   const int64_t target = fullscreen.isOpen() ? fullscreen.currentId() : selId;
   fullscreen.close();
-  if (editView.isOpen()) {
-    editView.setMode(mode);
-  } else {
+  if (!editView.isOpen()) {
     editView.open(target);
-    editView.setMode(mode);
   }
+  editView.setMode(mode);
 }
 
 static void applyFilterMode(ui::FilterBar& filterBar, ui::GridView& grid,
