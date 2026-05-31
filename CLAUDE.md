@@ -55,6 +55,7 @@ ctest --preset debug --output-on-failure  # run tests
 - **Data-conversion helpers**: any inline block that converts data from one representation to another (e.g. RGB→RGBA, pixels→MTLTexture, JSON→struct) must be extracted into a named free function. Name it `aToB` or `aFromB`. Place it in the nearest anonymous namespace. Never leave a multi-line conversion loop or construction sequence inline inside a larger function.
 - **Designated initializers**: always use C++20 designated initializer syntax (`.field = value`) when constructing structs by aggregate initialization. Never rely on positional order.
 - **`std::expected` for fallible results**: use `std::expected<T, std::string>` (C++23) instead of a `{bool ok, string error}` struct for any function that can fail. Return values via the type directly; signal errors with `std::unexpected(msg)`. Provide thin `success()`/`failure()` free-function helpers in the same namespace when the call sites benefit from the symmetry.
+- **Enums for named states**: any function that dispatches on a fixed set of named cases (e.g. orientations, modes, result types) must use a scoped `enum class` instead of bare integers or strings. Extract a private helper function for each case; dispatch via `switch` on the enum. Never use magic numbers or raw `if`/`else if` chains where an enum + switch would be clearer.
 
 ## Dependency graph
 ```

@@ -1,4 +1,5 @@
 #include "ThumbnailCache.h"
+#include "util/PixelPipeline.h"
 #include <turbojpeg.h>
 #include <spdlog/spdlog.h>
 #include <filesystem>
@@ -121,13 +122,23 @@ std::vector<uint8_t> ThumbnailCache::resizeJpeg(const std::vector<uint8_t>& src,
     return src;
   }
 
-  auto [tw, th] = scaleDimensions(w, h, maxDim);
+  // Read EXIF orientation before computing scale dimensions so we use display
+  // (post-rotation) dimensions as the resize target.
+  const util::Orientation orientation = util::readJpegOrientation(src.data(), src.size());
+  const bool rotates90 = (orientation == util::Orientation::Rotate90CW ||
+                          orientation == util::Orientation::Rotate90CCW);
+  const int  displayW    = rotates90 ? h : w;
+  const int  displayH    = rotates90 ? w : h;
+
+  auto [tw, th] = scaleDimensions(displayW, displayH, maxDim);
 
   // Decode at the best available DCT scaling factor (≥ target size), then
   // software-resize if the DCT output is still larger than [tw, th].
-  // This handles embedded JPEGs that are too large to decode directly to [tw, th]
-  // in a single DCT pass (e.g. Canon CR2 6720×4480 embedded JPEG → 256px thumb).
-  auto [decW, decH] = bestDctDecodeSize(w, h, tw, th);
+  // When rotating 90°, the JPEG is landscape but the target is portrait, so
+  // swap tw/th for the pre-rotation DCT size computation.
+  auto [decW, decH] = rotates90
+      ? bestDctDecodeSize(w, h, th, tw)
+      : bestDctDecodeSize(w, h, tw, th);
 
   std::vector<uint8_t> rgb(static_cast<size_t>(decW * decH) * 3);
   if (tjDecompress2(tj, src.data(), (unsigned long)src.size(), rgb.data(), decW, 0, decH,
@@ -136,6 +147,9 @@ std::vector<uint8_t> ThumbnailCache::resizeJpeg(const std::vector<uint8_t>& src,
     return src;
   }
   tjDestroy(tj);
+
+  // Apply EXIF orientation (may swap decW/decH for 90°/270° rotations)
+  util::applyOrientationRgb(rgb, decW, decH, orientation);
 
   if (decW != tw || decH != th) {
     rgb = bilinearResizeRgb(rgb, decW, decH, tw, th);

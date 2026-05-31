@@ -44,4 +44,20 @@ std::vector<uint8_t> cropAndRotatePixels(const std::vector<uint8_t>& src,
                                          const catalog::CropRect& crop,
                                          int& outW, int& outH);
 
+// EXIF orientation values (tag 0x0112).
+enum class Orientation : int {
+  Normal      = 1,
+  Rotate180   = 3,
+  Rotate90CW  = 6,
+  Rotate90CCW = 8,
+};
+
+// Parse JPEG bytes for the EXIF Orientation tag (0x0112).
+// Returns Orientation::Normal if absent or unreadable.
+Orientation readJpegOrientation(const uint8_t* data, size_t size);
+
+// Rotate/flip an interleaved RGB (3 bytes/pixel) buffer to match the EXIF orientation.
+// w and h are updated in place for 90°/270° rotations.
+void applyOrientationRgb(std::vector<uint8_t>& rgb, int& w, int& h, Orientation orientation);
+
 }  // namespace util

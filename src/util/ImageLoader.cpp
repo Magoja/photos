@@ -76,6 +76,10 @@ static RgbImage decodeWithTurboJpeg(const std::string& path, int maxEdge) {
     return {};
   }
 
+  // Apply EXIF orientation before downsampling so dimensions are correct
+  const Orientation orientation = readJpegOrientation(bytes.data(), bytes.size());
+  applyOrientationRgb(rgb, srcW, srcH, orientation);
+
   RgbImage result;
   if (maxEdge > 0 && std::max(srcW, srcH) > maxEdge) {
     const int scale = std::max(1, std::max(srcW, srcH) / maxEdge);

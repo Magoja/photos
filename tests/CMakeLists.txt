@@ -25,6 +25,7 @@ set(IMPORT_SOURCES_PLAIN
 
 set(UTIL_SOURCES_PLAIN
     ${CMAKE_SOURCE_DIR}/src/util/ThreadPool.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/PixelPipeline.cpp
 )
 
 set(COMMON_LIBS
@@ -42,7 +43,9 @@ set(COMMON_LIBS
 set(COMMON_DEFS SPDLOG_COMPILED_LIB)
 
 # ── test_database ─────────────────────────────────────────────────────────────
-add_executable(test_database test_database.cpp ${CATALOG_SOURCES})
+add_executable(test_database test_database.cpp ${CATALOG_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/util/PixelPipeline.cpp
+)
 target_link_libraries(test_database PRIVATE
     Catch2::Catch2WithMain SQLite::SQLite3
     ${HB}/lib/libspdlog.dylib ${HB}/lib/libfmt.dylib
@@ -55,6 +58,7 @@ add_test(NAME test_database COMMAND test_database)
 add_executable(test_hash_dedup
     test_hash_dedup.cpp
     ${CATALOG_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/util/PixelPipeline.cpp
     ${CMAKE_SOURCE_DIR}/src/import/HashDedup.cpp
 )
 target_link_libraries(test_hash_dedup PRIVATE

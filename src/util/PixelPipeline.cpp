@@ -2,6 +2,7 @@
 #include <array>
 #include <cmath>
 #include <algorithm>
+#include <cstring>
 
 namespace util {
 
@@ -198,6 +199,132 @@ std::vector<uint8_t> cropAndRotatePixels(const std::vector<uint8_t>& src,
     }
   }
   return result;
+}
+
+}  // namespace util
+
+// ── JPEG EXIF orientation helpers ─────────────────────────────────────────────
+
+namespace {
+
+uint16_t pipeU16(const uint8_t* p, bool be) {
+  return be ? static_cast<uint16_t>(p[0] << 8 | p[1])
+            : static_cast<uint16_t>(p[1] << 8 | p[0]);
+}
+
+uint32_t pipeU32(const uint8_t* p, bool be) {
+  return be
+    ? (static_cast<uint32_t>(p[0])<<24 | static_cast<uint32_t>(p[1])<<16 |
+       static_cast<uint32_t>(p[2])<< 8 | static_cast<uint32_t>(p[3]))
+    : (static_cast<uint32_t>(p[3])<<24 | static_cast<uint32_t>(p[2])<<16 |
+       static_cast<uint32_t>(p[1])<< 8 | static_cast<uint32_t>(p[0]));
+}
+
+}  // namespace
+
+namespace util {
+
+Orientation readJpegOrientation(const uint8_t* data, size_t size) {
+  if (size < 4 || data[0] != 0xFF || data[1] != 0xD8) { return Orientation::Normal; }
+  size_t pos = 2;
+  while (pos + 4 <= size) {
+    if (data[pos] != 0xFF) { break; }
+    const uint8_t  marker = data[pos + 1];
+    const uint16_t segLen = static_cast<uint16_t>(data[pos+2] << 8 | data[pos+3]);
+    if (segLen < 2) { break; }
+    const size_t segEnd = pos + 2 + segLen;
+    if (segEnd > size) { break; }
+
+    if (marker == 0xE1 && segLen >= 8) {
+      const uint8_t* seg = data + pos + 4;
+      if (std::memcmp(seg, "Exif\0\0", 6) == 0) {
+        const uint8_t* tiff     = seg + 6;
+        const size_t   tiffSize = segLen - 2 - 6;
+        if (tiffSize >= 8) {
+          const bool be = (tiff[0] == 'M' && tiff[1] == 'M');
+          if (pipeU16(tiff + 2, be) == 42) {
+            const uint32_t ifd0Off = pipeU32(tiff + 4, be);
+            if (ifd0Off + 2 <= tiffSize) {
+              const uint16_t nEntries = pipeU16(tiff + ifd0Off, be);
+              for (uint16_t e = 0; e < nEntries; ++e) {
+                const size_t eOff = ifd0Off + 2 + static_cast<size_t>(e) * 12;
+                if (eOff + 12 > tiffSize) { break; }
+                if (pipeU16(tiff + eOff, be) == 0x0112) {
+                  return static_cast<Orientation>(pipeU16(tiff + eOff + 8, be));
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if (marker == 0xDA) { break; }  // SOS marker — image data begins
+    pos = segEnd;
+  }
+  return Orientation::Normal;
+}
+
+// ── Per-rotation helpers ──────────────────────────────────────────────────────
+
+static void rotate180(std::vector<uint8_t>& rgb, int w, int h) {
+  const int n = w * h;
+  for (int i = 0, j = n - 1; i < j; ++i, --j) {
+    std::swap(rgb[i*3+0], rgb[j*3+0]);
+    std::swap(rgb[i*3+1], rgb[j*3+1]);
+    std::swap(rgb[i*3+2], rgb[j*3+2]);
+  }
+}
+
+static std::vector<uint8_t> rotate90CW(const std::vector<uint8_t>& rgb, int srcW, int srcH) {
+  // dst[r][c] = src[srcH-1-c][r];  dstW=srcH, dstH=srcW
+  std::vector<uint8_t> dst(static_cast<size_t>(srcW * srcH) * 3);
+  for (int r = 0; r < srcW; ++r) {
+    for (int c = 0; c < srcH; ++c) {
+      const int srcIdx = ((srcH - 1 - c) * srcW + r) * 3;
+      const int dstIdx = (r * srcH + c) * 3;
+      dst[dstIdx+0] = rgb[srcIdx+0];
+      dst[dstIdx+1] = rgb[srcIdx+1];
+      dst[dstIdx+2] = rgb[srcIdx+2];
+    }
+  }
+  return dst;
+}
+
+static std::vector<uint8_t> rotate90CCW(const std::vector<uint8_t>& rgb, int srcW, int srcH) {
+  // dst[r][c] = src[c][srcW-1-r];  dstW=srcH, dstH=srcW
+  std::vector<uint8_t> dst(static_cast<size_t>(srcW * srcH) * 3);
+  for (int r = 0; r < srcW; ++r) {
+    for (int c = 0; c < srcH; ++c) {
+      const int srcIdx = (c * srcW + (srcW - 1 - r)) * 3;
+      const int dstIdx = (r * srcH + c) * 3;
+      dst[dstIdx+0] = rgb[srcIdx+0];
+      dst[dstIdx+1] = rgb[srcIdx+1];
+      dst[dstIdx+2] = rgb[srcIdx+2];
+    }
+  }
+  return dst;
+}
+
+// ── Public apply ──────────────────────────────────────────────────────────────
+
+void applyOrientationRgb(std::vector<uint8_t>& rgb, int& w, int& h, Orientation orientation) {
+  switch (orientation) {
+    case Orientation::Normal:
+      break;
+    case Orientation::Rotate180:
+      rotate180(rgb, w, h);
+      break;
+    case Orientation::Rotate90CW:
+      rgb = rotate90CW(rgb, w, h);
+      std::swap(w, h);
+      break;
+    case Orientation::Rotate90CCW:
+      rgb = rotate90CCW(rgb, w, h);
+      std::swap(w, h);
+      break;
+    default:
+      break;
+  }
 }
 
 }  // namespace util
