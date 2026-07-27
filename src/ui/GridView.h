@@ -31,6 +31,8 @@ class GridView {
 
   // Reload photo IDs for given folder (0 = all)
   void loadFolder(int64_t folderId, FilterMode filter);
+  // Reload photo IDs for the union of several folders (empty or {0} = all)
+  void loadFolders(std::vector<int64_t> folderIds, FilterMode filter);
   void reload();
 
   // Render the grid inside the current ImGui window
@@ -74,7 +76,7 @@ class GridView {
   std::vector<int64_t> photoIds_;
   std::unordered_set<int64_t> requested_;  // IDs for which thumb load was requested
   std::unordered_set<int64_t> pickedIds_;  // IDs with picked=1 (refreshed on reload)
-  int64_t folderId_ = 0;
+  std::vector<int64_t> folderIds_;         // selected folders; empty or {0} = all photos
   FilterMode filter_ = FilterMode::All;
 
   int64_t primaryId_ = 0;                    // anchor / primary selection
@@ -93,6 +95,7 @@ class GridView {
   void renderEmptyState() const;
   void handleCellClick(int64_t pid);
   void applyRangeSelect(int64_t fromId, int64_t toId);
+  bool isAllPhotos() const;  // true when folderIds_ is empty or contains 0
 
  public:
   float thumbScale() const { return thumbScale_; }

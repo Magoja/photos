@@ -352,6 +352,42 @@ TEST_CASE("PhotoRepository: updateMetadata backfills EXIF/GPS on an existing row
   CHECK(after->gpsAltM == Catch::Approx(12.5).epsilon(1e-9));
 }
 
+// ── queryByFolders (multi-folder union) ───────────────────────────────────────
+TEST_CASE("queryByFolders returns the union across folders, capture-time ordered", "[db]") {
+  TempDb f;
+  PhotoRepository repo(*f.db);
+  const int64_t fA = insertFolderForTest(repo, "MF_A");
+  const int64_t fB = insertFolderForTest(repo, "MF_B");
+  const int64_t fC = insertFolderForTest(repo, "MF_C");
+
+  const auto add = [&](int64_t folder, const std::string& name, const std::string& capture) {
+    PhotoRecord p;
+    p.folderId = folder;
+    p.filename = name;
+    p.fileSize = 1;
+    p.captureTime = capture;
+    return repo.insertPhoto(p);
+  };
+  // Interleaved capture times across folders A and B; C is a decoy.
+  const int64_t a1 = add(fA, "a1.jpg", "2026-01-01T10:00:00");
+  const int64_t b1 = add(fB, "b1.jpg", "2026-01-02T10:00:00");
+  const int64_t a2 = add(fA, "a2.jpg", "2026-01-03T10:00:00");
+  add(fC, "c1.jpg", "2026-01-04T10:00:00");
+  repo.updatePicked(b1, 1);
+
+  SECTION("union spans the given folders in capture order, excludes others") {
+    const auto ids = repo.queryByFolders({fA, fB});
+    REQUIRE(ids == std::vector<int64_t>{a1, b1, a2});
+  }
+  SECTION("pickedOnly filters within the union") {
+    const auto picked = repo.queryByFolders({fA, fB}, true);
+    REQUIRE(picked == std::vector<int64_t>{b1});
+  }
+  SECTION("empty input yields empty result") {
+    REQUIRE(repo.queryByFolders({}).empty());
+  }
+}
+
 // ── Export presets seeded ─────────────────────────────────────────────────────
 TEST_CASE("Export presets seeded by Schema", "[db]") {
   TempDb f;

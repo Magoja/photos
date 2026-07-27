@@ -95,12 +95,18 @@ class PhotoRepository {
   std::string getThumbMicroPath(int64_t photoId) const;
 
   std::vector<int64_t> queryByFolder(int64_t folderId, bool pickedOnly = false) const;
+  // Union of photos across several folders (empty input → empty result).
+  std::vector<int64_t> queryByFolders(const std::vector<int64_t>& folderIds,
+                                      bool pickedOnly = false) const;
   std::vector<int64_t> queryAll(bool pickedOnly = false) const;
 
   // Returns {id → {thumbPath, editSettings}} for all photos in a folder.
   // folderId == 0 means all photos. Single SQL query; called once per reload().
   std::unordered_map<int64_t, std::pair<std::string, std::string>> queryThumbMeta(
     int64_t folderId, bool pickedOnly) const;
+  // Same, for a union of folders (empty input → empty result).
+  std::unordered_map<int64_t, std::pair<std::string, std::string>> queryThumbMetaForFolders(
+    const std::vector<int64_t>& folderIds, bool pickedOnly) const;
 
   void updatePicked(int64_t id, int picked);
   void updateThumb(int64_t id, const std::string& path, int w, int h, int64_t mtime);

@@ -152,9 +152,33 @@ static void openOrSwitchEditMode(ui::FullscreenView& fullscreen, ui::EditView& e
   editView.setMode(mode);
 }
 
-static void switchFolderView(RenderCtx& ctx, int64_t folderId, ui::FilterMode mode) {
+static std::string joinFolderIds(const std::vector<int64_t>& ids) {
+  std::string csv;
+  for (size_t i = 0; i < ids.size(); ++i) {
+    csv += (i == 0 ? "" : ",") + std::to_string(ids[i]);
+  }
+  return csv;
+}
+
+static std::vector<int64_t> parseFolderIds(const std::string& csv) {
+  std::vector<int64_t> ids;
+  size_t pos = 0;
+  while (pos < csv.size()) {
+    size_t comma = csv.find(',', pos);
+    if (comma == std::string::npos) {
+      comma = csv.size();
+    }
+    if (comma > pos) {
+      ids.push_back(static_cast<int64_t>(std::stoll(csv.substr(pos, comma - pos))));
+    }
+    pos = comma + 1;
+  }
+  return ids;
+}
+
+static void switchFolderView(RenderCtx& ctx, std::vector<int64_t> folderIds, ui::FilterMode mode) {
   ctx.thumbPool.clearQueue();
-  ctx.grid.loadFolder(folderId, mode);
+  ctx.grid.loadFolders(std::move(folderIds), mode);
 }
 
 // Refresh the UI after a delete command succeeds: queue now-dead textures for
@@ -166,12 +190,18 @@ static void refreshAfterDelete(RenderCtx& ctx, const std::vector<int64_t>& delet
   ctx.grid.clearSelection();
   ctx.folderPanel.refresh();
 
-  const bool openFolderDeleted =
-    deletedFolderId > 0 && deletedFolderId == ctx.folderPanel.selectedFolder();
-  if (openFolderDeleted) {
-    ctx.folderPanel.setSelectedFolder(0);
-    ctx.repo.setSetting("last_folder_id", "0");
-    switchFolderView(ctx, 0, ctx.filterBar.mode());
+  // Drop the deleted folder from the selection; fall back to All if it emptied.
+  auto selection = ctx.folderPanel.selectedFolders();
+  const bool wasSelected =
+    deletedFolderId > 0 && std::ranges::find(selection, deletedFolderId) != selection.end();
+  if (wasSelected) {
+    std::erase(selection, deletedFolderId);
+    if (selection.empty()) {
+      selection = {0};
+    }
+    ctx.folderPanel.setSelectedFolders(selection);
+    ctx.repo.setSetting("last_folder_ids", joinFolderIds(selection));
+    switchFolderView(ctx, selection, ctx.filterBar.mode());
   } else {
     ctx.grid.reload();
   }
@@ -191,7 +221,7 @@ static void dispatchDelete(RenderCtx& ctx, const ui::DeleteConfirmDialog::Target
 
 static void applyFilterMode(RenderCtx& ctx, ui::FilterMode mode) {
   ctx.filterBar.setMode(mode);
-  switchFolderView(ctx, ctx.folderPanel.selectedFolder(), mode);
+  switchFolderView(ctx, ctx.folderPanel.selectedFolders(), mode);
   ctx.repo.setSetting("last_filter_mode", std::to_string(static_cast<int>(mode)));
 }
 
@@ -292,9 +322,9 @@ static void setupThumbMissCallback(RenderCtx& ctx) {
 }
 
 static void wireUiCallbacks(RenderCtx& ctx) {
-  ctx.folderPanel.setOnSelect([&](int64_t fid) {
-    switchFolderView(ctx, fid, ctx.filterBar.mode());
-    ctx.repo.setSetting("last_folder_id", std::to_string(fid));
+  ctx.folderPanel.setOnSelectionChanged([&](std::vector<int64_t> fids) {
+    switchFolderView(ctx, fids, ctx.filterBar.mode());
+    ctx.repo.setSetting("last_folder_ids", joinFolderIds(fids));
   });
 
   ctx.folderPanel.setOnDelete(
@@ -548,7 +578,7 @@ static void renderLibraryRootModal(RenderCtx& ctx) {
 static void renderPhotosPanel(RenderCtx& ctx) {
   ImGui::Begin("Photos");
   if (ctx.filterBar.render()) {
-    switchFolderView(ctx, ctx.folderPanel.selectedFolder(), ctx.filterBar.mode());
+    switchFolderView(ctx, ctx.folderPanel.selectedFolders(), ctx.filterBar.mode());
     ctx.repo.setSetting("last_filter_mode", std::to_string(static_cast<int>(ctx.filterBar.mode())));
   }
   if (ctx.grid.selectionCount() >= 2) {
@@ -777,15 +807,17 @@ int main(int /*argc*/, char** /*argv*/) {
                 metaSyncDlg, settingsPanel, deleteDlg, thumbMtx,   thumbResQ, thumbPool,  registry};
 
   folderPanel.refresh();
-  // Restore last session state
-  const int64_t lastFolder =
-    static_cast<int64_t>(std::stoll(repo.getSetting("last_folder_id", "0")));
+  // Restore last session state (falls back to the legacy single-folder setting)
+  std::vector<int64_t> lastFolders = parseFolderIds(repo.getSetting("last_folder_ids", ""));
+  if (lastFolders.empty()) {
+    lastFolders = {static_cast<int64_t>(std::stoll(repo.getSetting("last_folder_id", "0")))};
+  }
   const ui::FilterMode lastFilter = std::stoi(repo.getSetting("last_filter_mode", "0")) == 1
                                       ? ui::FilterMode::Picked
                                       : ui::FilterMode::All;
-  folderPanel.setSelectedFolder(lastFolder);
+  folderPanel.setSelectedFolders(lastFolders);
   filterBar.setMode(lastFilter);
-  grid.loadFolder(lastFolder, lastFilter);
+  grid.loadFolders(lastFolders, lastFilter);
 
   setupThumbMissCallback(ctx);
   wireUiCallbacks(ctx);

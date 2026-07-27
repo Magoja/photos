@@ -11,25 +11,34 @@ GridView::GridView(catalog::PhotoRepository& repo, TextureManager& texMgr)
   : repo_(repo), texMgr_(texMgr) {}
 
 void GridView::loadFolder(int64_t folderId, FilterMode filter) {
-  folderId_ = folderId;
+  loadFolders({folderId}, filter);
+}
+
+void GridView::loadFolders(std::vector<int64_t> folderIds, FilterMode filter) {
+  folderIds_ = std::move(folderIds);
   filter_ = filter;
   primaryId_ = 0;
   selectedIds_.clear();
   reload();
 }
 
+// True when the current folder selection means "all photos" (empty or contains 0).
+bool GridView::isAllPhotos() const {
+  return folderIds_.empty() || std::ranges::find(folderIds_, 0) != folderIds_.end();
+}
+
 void GridView::reload() {
   const bool pickedOnly = (filter_ == FilterMode::Picked);
-  photoIds_ =
-    (folderId_ == 0) ? repo_.queryAll(pickedOnly) : repo_.queryByFolder(folderId_, pickedOnly);
+  const bool all = isAllPhotos();
+  photoIds_ = all ? repo_.queryAll(pickedOnly) : repo_.queryByFolders(folderIds_, pickedOnly);
   requested_.clear();
 
-  const auto pickedVec =
-    (folderId_ == 0) ? repo_.queryAll(true) : repo_.queryByFolder(folderId_, true);
+  const auto pickedVec = all ? repo_.queryAll(true) : repo_.queryByFolders(folderIds_, true);
   pickedIds_ = std::unordered_set<int64_t>(pickedVec.begin(), pickedVec.end());
 
   thumbMeta_.clear();
-  const auto raw = repo_.queryThumbMeta(folderId_, pickedOnly);
+  const auto raw = all ? repo_.queryThumbMeta(0, pickedOnly)
+                       : repo_.queryThumbMetaForFolders(folderIds_, pickedOnly);
   for (const auto& [id, paths] : raw) {
     const auto& [tPath, esJson] = paths;
     ThumbMeta m;

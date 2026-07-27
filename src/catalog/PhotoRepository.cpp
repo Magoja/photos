@@ -395,6 +395,65 @@ std::unordered_map<int64_t, std::pair<std::string, std::string>> PhotoRepository
   return out;
 }
 
+namespace {
+
+// Build a comma-separated placeholder list "?,?,?" for an IN clause of n binds.
+std::string placeholderList(size_t n) {
+  std::string out;
+  for (size_t i = 0; i < n; ++i) {
+    out += (i == 0) ? "?" : ",?";
+  }
+  return out;
+}
+
+}  // namespace
+
+std::vector<int64_t> PhotoRepository::queryByFolders(const std::vector<int64_t>& folderIds,
+                                                     bool pickedOnly) const {
+  if (folderIds.empty()) {
+    return {};
+  }
+  std::string sql = "SELECT id FROM photos WHERE folder_id IN (" +
+                    placeholderList(folderIds.size()) + ")";
+  if (pickedOnly) {
+    sql += " AND picked=1";
+  }
+  sql += " ORDER BY COALESCE(capture_time,import_time)";
+
+  Stmt s = db_.prepare(sql);
+  for (size_t i = 0; i < folderIds.size(); ++i) {
+    s.bind(static_cast<int>(i) + 1, folderIds[i]);
+  }
+  return collectIds(s);
+}
+
+std::unordered_map<int64_t, std::pair<std::string, std::string>>
+PhotoRepository::queryThumbMetaForFolders(const std::vector<int64_t>& folderIds,
+                                          bool pickedOnly) const {
+  std::unordered_map<int64_t, std::pair<std::string, std::string>> out;
+  if (folderIds.empty()) {
+    return out;
+  }
+  std::string sql =
+    "SELECT id, COALESCE(thumb_path,''), COALESCE(edit_settings,'{}') FROM photos "
+    "WHERE folder_id IN (" +
+    placeholderList(folderIds.size()) + ")";
+  if (pickedOnly) {
+    sql += " AND picked=1";
+  }
+  sql += " ORDER BY COALESCE(capture_time,import_time)";
+
+  Stmt s = db_.prepare(sql);
+  for (size_t i = 0; i < folderIds.size(); ++i) {
+    s.bind(static_cast<int>(i) + 1, folderIds[i]);
+  }
+  while (s.step()) {
+    const int64_t id = s.getInt64(0);
+    out[id] = {s.getText(1), s.getText(2)};
+  }
+  return out;
+}
+
 void PhotoRepository::updatePicked(int64_t id, int picked) {
   auto s = db_.prepare("UPDATE photos SET picked=? WHERE id=?");
   s.bind(1, picked);
