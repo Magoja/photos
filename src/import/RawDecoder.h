@@ -18,6 +18,9 @@ class RawDecoder {
  public:
   // Decode a RAW (or JPEG) file: extract thumbnail + EXIF
   static DecodeResult decode(const std::string& filePath);
+
+  // Extract EXIF/GPS metadata only, skipping thumbnail + luma-scale work.
+  static ExifData decodeMetadata(const std::string& filePath);
 };
 
 }  // namespace import_ns

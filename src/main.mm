@@ -38,6 +38,7 @@
 #include "ui/ImportDialog.h"
 #include "ui/ExportDialog.h"
 #include "ui/MetaSyncDialog.h"
+#include "ui/DeleteConfirmDialog.h"
 #include "ui/SettingsPanel.h"
 
 // Command system
@@ -104,6 +105,7 @@ struct RenderCtx {
   ui::ExportDialog& exportDlg;
   ui::MetaSyncDialog& metaSyncDlg;
   ui::SettingsPanel& settingsPanel;
+  ui::DeleteConfirmDialog& deleteDlg;
   std::mutex& thumbMtx;
   std::queue<ThumbResult>& thumbResQ;
   util::ThreadPool& thumbPool;
@@ -111,6 +113,13 @@ struct RenderCtx {
   // Deferred clear-cache: set by Settings button, executed at the start of the
   // next frame before any draw calls to avoid freeing textures mid-frame.
   bool clearCachePending = false;
+  // Deferred metadata reimport: set by the Settings debug button, executed at the
+  // start of the next frame (a long, blocking backfill of EXIF/GPS from source files).
+  bool reimportMetaPending = false;
+  // Deferred texture evictions for deleted photos. The delete modal confirms
+  // mid-frame, after the grid has already submitted these textures to the ImGui
+  // draw list — freeing them now would crash RenderDrawData. Drained next frame.
+  std::vector<int64_t> pendingEvictions;
 };
 
 static bool loadAndDecodeJpeg(const std::string& path, std::vector<uint8_t>& outRgba, int& outW,
@@ -146,6 +155,38 @@ static void openOrSwitchEditMode(ui::FullscreenView& fullscreen, ui::EditView& e
 static void switchFolderView(RenderCtx& ctx, int64_t folderId, ui::FilterMode mode) {
   ctx.thumbPool.clearQueue();
   ctx.grid.loadFolder(folderId, mode);
+}
+
+// Refresh the UI after a delete command succeeds: queue now-dead textures for
+// eviction next frame (freeing them mid-frame would crash RenderDrawData), reset
+// the view if the open folder was removed, and reload the grid + folder counts.
+static void refreshAfterDelete(RenderCtx& ctx, const std::vector<int64_t>& deletedIds,
+                               int64_t deletedFolderId) {
+  ctx.pendingEvictions.insert(ctx.pendingEvictions.end(), deletedIds.begin(), deletedIds.end());
+  ctx.grid.clearSelection();
+  ctx.folderPanel.refresh();
+
+  const bool openFolderDeleted =
+    deletedFolderId > 0 && deletedFolderId == ctx.folderPanel.selectedFolder();
+  if (openFolderDeleted) {
+    ctx.folderPanel.setSelectedFolder(0);
+    ctx.repo.setSetting("last_folder_id", "0");
+    switchFolderView(ctx, 0, ctx.filterBar.mode());
+  } else {
+    ctx.grid.reload();
+  }
+}
+
+static void dispatchDelete(RenderCtx& ctx, const ui::DeleteConfirmDialog::Target& target) {
+  const bool isFolder = target.kind == ui::DeleteConfirmDialog::Kind::Folder;
+  const command::CommandResult res =
+    isFolder ? ctx.registry.dispatch("catalog.delete.folder", {{"folderId", target.folderId}})
+             : ctx.registry.dispatch("catalog.delete.photos", {{"ids", target.ids}});
+  if (!res) {
+    return;
+  }
+  const auto deleted = res->value("deleted", std::vector<int64_t>{});
+  refreshAfterDelete(ctx, deleted, isFolder ? target.folderId : 0);
 }
 
 static void applyFilterMode(RenderCtx& ctx, ui::FilterMode mode) {
@@ -256,6 +297,12 @@ static void wireUiCallbacks(RenderCtx& ctx) {
     ctx.repo.setSetting("last_folder_id", std::to_string(fid));
   });
 
+  ctx.folderPanel.setOnDelete(
+    [&](int64_t fid, const std::string& name) { ctx.deleteDlg.openForFolder(fid, name); });
+
+  ctx.deleteDlg.setOnConfirm(
+    [&](const ui::DeleteConfirmDialog::Target& target) { dispatchDelete(ctx, target); });
+
   // catalog.pick callback: reload grid after pick state changes.
   ctx.fullscreen.setPickChangedCallback(
     [&](int64_t /*pid*/, int /*picked*/) { ctx.grid.reload(); });
@@ -283,6 +330,7 @@ static void wireUiCallbacks(RenderCtx& ctx) {
   // to the ImGui draw list — calling evictAll() mid-frame would free those
   // textures before ImGui_ImplMetal_RenderDrawData processes them (crash).
   ctx.settingsPanel.setClearCacheCallback([&]() { ctx.clearCachePending = true; });
+  ctx.settingsPanel.setReimportMetadataCallback([&]() { ctx.reimportMetaPending = true; });
 }
 
 static void drainThumbQueue(RenderCtx& ctx) {
@@ -299,9 +347,8 @@ static void drainThumbQueue(RenderCtx& ctx) {
 
   while (!local.empty()) {
     auto& r = local.front();
-    const int64_t baseId = r.pid >= ui::GridView::kMicroOffset
-                             ? r.pid - ui::GridView::kMicroOffset
-                             : r.pid;
+    const int64_t baseId =
+      r.pid >= ui::GridView::kMicroOffset ? r.pid - ui::GridView::kMicroOffset : r.pid;
     if (inView.count(baseId)) {
       ctx.texMgr.uploadRgba(r.pid, r.rgba, r.width, r.height);
     }
@@ -328,6 +375,20 @@ static void drainClearCache(RenderCtx& ctx) {
   ctx.grid.reload();
 }
 
+static void drainReimportMeta(RenderCtx& ctx) {
+  if (!ctx.reimportMetaPending) {
+    return;
+  }
+  ctx.reimportMetaPending = false;
+  const auto result = ctx.registry.dispatch("debug.reimport.metadata", {});
+  if (result.has_value()) {
+    const auto& d = *result;
+    ctx.settingsPanel.setReimportResult(d.value("updated", 0), d.value("errors", 0),
+                                        d.value("total", 0));
+  }
+  ctx.grid.reload();
+}
+
 static void drainTextureEvictions(RenderCtx& ctx) {
   if (const int64_t evictId = ctx.editView.pollPendingEvict(); evictId > 0) {
     ctx.texMgr.evict(evictId);
@@ -338,6 +399,11 @@ static void drainTextureEvictions(RenderCtx& ctx) {
     ctx.texMgr.evict(u.id + ui::GridView::kMicroOffset);
     ctx.texMgr.uploadRgba(u.id, u.rgba, u.w, u.h);
   }
+  for (const int64_t id : ctx.pendingEvictions) {
+    ctx.texMgr.evict(id);
+    ctx.texMgr.evict(id + ui::GridView::kMicroOffset);
+  }
+  ctx.pendingEvictions.clear();
 }
 
 static void togglePickSelection(RenderCtx& ctx) {
@@ -427,6 +493,9 @@ static void renderMenuBar(RenderCtx& ctx) {
     if (ImGui::MenuItem("Export Selected", nullptr, false, ctx.grid.primaryId() > 0)) {
       ctx.exportDlg.open(ctx.grid.primaryId(),
                          buildSelectionList(ctx.grid.selectedIds(), ctx.grid.primaryId()));
+    }
+    if (ImGui::MenuItem("Delete Selected", nullptr, false, ctx.grid.selectionCount() > 0)) {
+      ctx.deleteDlg.openForPhotos(buildSelectionList(ctx.grid.selectedIds(), ctx.grid.primaryId()));
     }
     ImGui::Separator();
     if (ImGui::MenuItem("Settings...")) {
@@ -690,6 +759,7 @@ int main(int /*argc*/, char** /*argv*/) {
   ui::ExportDialog exportDlg(repo, exportSession);
   ui::MetaSyncDialog metaSyncDlg(repo, texMgr);
   ui::SettingsPanel settingsPanel(repo, dbPath);
+  ui::DeleteConfirmDialog deleteDlg;
 
   // ── Async thumbnail loader ─────────────────────────────────────────────────
   std::mutex thumbMtx;
@@ -702,9 +772,9 @@ int main(int /*argc*/, char** /*argv*/) {
 
   // ── Wire everything up ────────────────────────────────────────────────────
   bool running = true;
-  RenderCtx ctx{running,     libraryRoot,   thumbDir,  db,         repo,     thumbCache, texMgr,
-                grid,        folderPanel,   filterBar, fullscreen, editView, importDlg,  exportDlg,
-                metaSyncDlg, settingsPanel, thumbMtx,  thumbResQ,  thumbPool, registry};
+  RenderCtx ctx{running,     libraryRoot,   thumbDir,  db,         repo,      thumbCache, texMgr,
+                grid,        folderPanel,   filterBar, fullscreen, editView,  importDlg,  exportDlg,
+                metaSyncDlg, settingsPanel, deleteDlg, thumbMtx,   thumbResQ, thumbPool,  registry};
 
   folderPanel.refresh();
   // Restore last session state
@@ -767,6 +837,7 @@ int main(int /*argc*/, char** /*argv*/) {
       ImGui::NewFrame();
 
       drainClearCache(ctx);
+      drainReimportMeta(ctx);
       drainThumbQueue(ctx);
       drainTextureEvictions(ctx);
       processGlobalHotkeys(ctx);
@@ -802,6 +873,7 @@ int main(int /*argc*/, char** /*argv*/) {
       importDlg.render();
       exportDlg.render();
       metaSyncDlg.render();
+      deleteDlg.render();
       settingsPanel.render();
 
       ImGui::Render();

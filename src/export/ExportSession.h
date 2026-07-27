@@ -17,7 +17,7 @@ class ExportSession {
   explicit ExportSession(catalog::PhotoRepository& repo);
 
   // Start async export. Returns false (no-op) if already running.
-  bool start(std::vector<int64_t> ids, std::string targetPath, int quality = 90);
+  bool start(std::vector<int64_t> ids, std::string targetPath, int quality = 100);
 
   void cancel();
   void reset();

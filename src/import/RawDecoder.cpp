@@ -394,6 +394,39 @@ static std::vector<uint8_t> readJpegFileBytes(const std::string& path) {
   return bytes;
 }
 
+// Fill widthPx/heightPx from a JPEG's SOF header — the authoritative encoded size.
+static void setJpegDimensions(const std::vector<uint8_t>& jpeg, ExifData& ex) {
+  tjhandle tj = tjInitDecompress();
+  if (!tj) {
+    return;
+  }
+  int w = 0, h = 0, ss = 0, cs = 0;
+  if (tjDecompressHeader3(tj, jpeg.data(), static_cast<unsigned long>(jpeg.size()), &w, &h, &ss,
+                          &cs) >= 0) {
+    ex.widthPx = w;
+    ex.heightPx = h;
+  }
+  tjDestroy(tj);
+}
+
+// Populate EXIF from a plain JPEG's bytes (make/model/GPS/date/exposure + size).
+static void fillJpegExif(const std::vector<uint8_t>& jpeg, ExifData& exif) {
+  if (auto parsed = parseJpegExif(jpeg)) {
+    exif = *parsed;  // make/model/GPS/date/exposure from the JPEG's EXIF
+  }
+  setJpegDimensions(jpeg, exif);  // authoritative encoded size
+}
+
+// Ensure captureTime is set, falling back to the JPEG APP1 date, then file mtime.
+static void fillCaptureTimeFallback(const std::string& filePath, ExifData& exif) {
+  if (exif.captureTime.empty()) {
+    exif.captureTime = exifDateToIso(readJpegExifDateString(filePath).c_str());
+  }
+  if (exif.captureTime.empty()) {
+    exif.captureTime = filemtimeToIso(filePath);
+  }
+}
+
 // ── RawDecoder ────────────────────────────────────────────────────────────────
 
 DecodeResult RawDecoder::decode(const std::string& filePath) {
@@ -404,35 +437,17 @@ DecodeResult RawDecoder::decode(const std::string& filePath) {
   if (rc != LIBRAW_SUCCESS) {
     result.error = libraw_strerror(rc);
     spdlog::warn("RawDecoder: open_file({}) failed: {}", filePath, result.error);
-    result.exif.captureTime = exifDateToIso(readJpegExifDateString(filePath).c_str());
-    if (result.exif.captureTime.empty()) {
-      result.exif.captureTime = filemtimeToIso(filePath);
-    }
     result.thumbJpeg = readJpegFileBytes(filePath);
     if (!result.thumbJpeg.empty()) {
       result.ok = true;
-      if (tjhandle tj = tjInitDecompress()) {
-        int w = 0, h = 0, ss = 0, cs = 0;
-        if (tjDecompressHeader3(tj, result.thumbJpeg.data(),
-                                static_cast<unsigned long>(result.thumbJpeg.size()), &w, &h, &ss,
-                                &cs) >= 0) {
-          result.exif.widthPx = w;
-          result.exif.heightPx = h;
-        }
-        tjDestroy(tj);
-      }
+      fillJpegExif(result.thumbJpeg, result.exif);
     }
+    fillCaptureTimeFallback(filePath, result.exif);
     return result;
   }
 
   extractExif(*raw, result.exif);
-  if (result.exif.captureTime.empty()) {
-    const auto dtStr = readJpegExifDateString(filePath);
-    result.exif.captureTime = exifDateToIso(dtStr.c_str());
-  }
-  if (result.exif.captureTime.empty()) {
-    result.exif.captureTime = filemtimeToIso(filePath);
-  }
+  fillCaptureTimeFallback(filePath, result.exif);
   extractThumbnail(*raw, result);
 
   if (!result.thumbJpeg.empty()) {
@@ -441,6 +456,27 @@ DecodeResult RawDecoder::decode(const std::string& filePath) {
 
   result.ok = true;
   return result;
+}
+
+ExifData RawDecoder::decodeMetadata(const std::string& filePath) {
+  // Metadata-only: skips thumbnail extraction and luma-scale (the expensive
+  // LibRaw unpack/dcraw_process steps) — used to backfill EXIF/GPS on existing
+  // catalog rows without re-decoding pixels.
+  ExifData exif;
+  auto raw = std::make_unique<LibRaw>();
+
+  const int rc = raw->open_file(filePath.c_str());
+  if (rc != LIBRAW_SUCCESS) {
+    if (const auto jpeg = readJpegFileBytes(filePath); !jpeg.empty()) {
+      fillJpegExif(jpeg, exif);
+    }
+    fillCaptureTimeFallback(filePath, exif);
+    return exif;
+  }
+
+  extractExif(*raw, exif);
+  fillCaptureTimeFallback(filePath, exif);
+  return exif;
 }
 
 }  // namespace import_ns

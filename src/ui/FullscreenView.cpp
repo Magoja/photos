@@ -11,7 +11,10 @@
 namespace {
 
 // Decode image to RGBA using the unified ImageLoader (LibRaw → JPEG fallback),
-// apply tone adjustments, and signal completion via readyFlag.
+// then bake the full edit into the pixels — tone (applyAdjustments) followed by
+// crop + straighten (cropAndRotatePixels), the same pipeline EditView's preview
+// and the Exporter use. The resulting texture is the finished image, so the
+// caller can display it whole. Signals completion via readyFlag.
 static void decodePhotoToRgba(const std::string& filePath, const catalog::EditSettings& es,
                               std::atomic<bool>& cancelFlag, std::vector<uint8_t>& outRgba,
                               int& outW, int& outH, std::atomic<bool>& readyFlag) {
@@ -24,10 +27,7 @@ static void decodePhotoToRgba(const std::string& filePath, const catalog::EditSe
     return;
   }
 
-  const auto adjusted = util::applyAdjustments(img.pixels, img.width, img.height, es);
-  outRgba = util::rgbToRgba(adjusted, img.width * img.height);
-  outW = img.width;
-  outH = img.height;
+  outRgba = util::applyEditsToRgba(img.pixels, img.width, img.height, es, outW, outH);
 
   if (!cancelFlag.load()) {
     readyFlag = true;
@@ -60,8 +60,9 @@ void FullscreenView::cancelDecode() {
 }
 
 void FullscreenView::startDecodeForCurrent() {
-  // Pre-cropped thumbnails already contain correct tone from the save pipeline —
-  // no decode needed; crop UV is also already applied (full {0,0,1,1}).
+  // Always decode: decodePhotoToRgba bakes tone + crop + straighten into a
+  // full-resolution texture (higher quality than the 256px thumbnail), which
+  // drawPhoto then displays whole.
   const auto rec = repo_.findById(currentId_);
   if (!rec) {
     return;
@@ -300,11 +301,23 @@ void FullscreenView::drawPhoto(ImDrawList* dl, ImVec2 scrSz) const {
 
   ImVec2 uvMin{0.f, 0.f}, uvMax{1.f, 1.f};
   float cropAspect = 1.f;
-  const auto rec = repo_.findById(currentId_);
-  if (rec) {
+
+  if (hasAdj) {
+    // Finished image (tone + crop + straighten already baked in) — display the
+    // whole texture; its own dimensions give the correct letterbox aspect.
+    const auto [texW, texH] = texMgr_.getSize(currentId_ + kAdjOffset);
+    if (texW > 0 && texH > 0) {
+      cropAspect = static_cast<float>(texW) / static_cast<float>(texH);
+    }
+  } else {
+    // Placeholder: the cached camera/grid thumbnail while the full decode runs.
+    // Crop the thumbnail via UV and derive the aspect from the thumbnail's own
+    // size (avoids the unoriented DB widthPx/heightPx mismatch for rotated JPGs).
+    const auto rec = repo_.findById(currentId_);
     ui::ThumbMeta m;
-    m.preCropped = rec->thumbPath.find("thumbs_edit") != std::string::npos;
-    if (!m.preCropped) {
+    if (rec && rec->thumbPath.find("thumbs_edit") != std::string::npos) {
+      m.preCropped = true;  // thumbs_edit thumbnail already incorporates the crop
+    } else if (rec) {
       const auto es = catalog::EditSettings::fromJson(rec->editSettings);
       m.cropX = es.crop.x;
       m.cropY = es.crop.y;
@@ -315,31 +328,11 @@ void FullscreenView::drawPhoto(ImDrawList* dl, ImVec2 scrSz) const {
     uvMin = {uv.u0, uv.v0};
     uvMax = {uv.u1, uv.v1};
 
-    if (m.preCropped) {
-      // Thumbnail already incorporates the crop — use its stored dimensions for
-      // the correct letterbox aspect ratio.
-      if (rec->thumbWidth > 0 && rec->thumbHeight > 0) {
-        cropAspect = (float)rec->thumbWidth / (float)rec->thumbHeight;
-      }
-    } else {
-      // Original camera JPEG — compute aspect from the crop region.
-      if (rec->widthPx > 0 && rec->heightPx > 0) {
-        cropAspect = (m.cropW * (float)rec->widthPx) / (m.cropH * (float)rec->heightPx);
-      } else {
-        // Fall back to actual texture dimensions — covers JPEGs with no DB dimensions
-        auto [texW, texH] = texMgr_.getSize(currentId_ + kAdjOffset);
-        if (texW == 0 || texH == 0) {
-          std::tie(texW, texH) = texMgr_.getSize(currentId_);
-        }
-        if (texW > 0 && texH > 0) {
-          cropAspect = (m.cropW * static_cast<float>(texW)) / (m.cropH * static_cast<float>(texH));
-        }
-      }
-    }
-  } else {
-    const auto [texW, texH] = texMgr_.getSize(currentId_);
-    if (texW > 0 && texH > 0) {
-      cropAspect = (float)texW / (float)texH;
+    const auto [thumbW, thumbH] = texMgr_.getSize(currentId_);
+    if (thumbW > 0 && thumbH > 0) {
+      cropAspect = (m.cropW * static_cast<float>(thumbW)) / (m.cropH * static_cast<float>(thumbH));
+    } else if (rec && rec->thumbWidth > 0 && rec->thumbHeight > 0) {
+      cropAspect = static_cast<float>(rec->thumbWidth) / static_cast<float>(rec->thumbHeight);
     }
   }
 

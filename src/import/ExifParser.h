@@ -1,6 +1,8 @@
 #pragma once
-#include <string>
 #include <cstdint>
+#include <optional>
+#include <span>
+#include <string>
 
 namespace import_ns {
 
@@ -19,5 +21,12 @@ struct ExifData {
   double gpsLon = 0.0;
   double gpsAltM = 0.0;
 };
+
+// Parse the EXIF metadata from a JPEG file's raw bytes.
+// Walks the JPEG marker stream for the APP1 "Exif\0\0" segment and reads the
+// embedded TIFF/EXIF/GPS IFDs. Returns std::nullopt when the input is not a
+// JPEG or carries no readable EXIF; all offsets are bounds-checked so malformed
+// input yields nullopt (or partially-filled data) rather than a crash.
+std::optional<ExifData> parseJpegExif(std::span<const uint8_t> fileBytes);
 
 }  // namespace import_ns

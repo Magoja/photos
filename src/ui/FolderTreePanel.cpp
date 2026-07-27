@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <span>
 #include <cstdio>
+#include <string>
 
 namespace ui {
 
@@ -29,6 +30,16 @@ static std::map<int64_t, std::vector<catalog::FolderRecord>> groupByParent(
     byParent[f.parentId].push_back(f);
   }
   return byParent;
+}
+
+void FolderTreePanel::renderFolderContextMenu(const catalog::FolderRecord& folder) {
+  if (!ImGui::BeginPopupContextItem()) {
+    return;
+  }
+  if (ImGui::MenuItem("Delete Folder") && onDelete_) {
+    onDelete_(folder.id, folder.name);
+  }
+  ImGui::EndPopup();
 }
 
 void FolderTreePanel::renderFolderChildren(
@@ -58,6 +69,7 @@ void FolderTreePanel::renderFolderChildren(
           onSelect_(f.id);
         }
       }
+      renderFolderContextMenu(f);
       if (open) {
         renderFolderChildren(f.id, byParent, counts);
         ImGui::TreePop();
@@ -74,6 +86,7 @@ void FolderTreePanel::renderFolderChildren(
           onSelect_(f.id);
         }
       }
+      renderFolderContextMenu(f);
       ImGui::TreePop();
     }
   }

@@ -35,6 +35,23 @@ static std::vector<int64_t> collectIds(Stmt& s) {
   return ids;
 }
 
+static PhotoDeleteRef rowToDeleteRef(Stmt& s) {
+  PhotoDeleteRef r;
+  r.id = s.getInt64(0);
+  r.fileHash = s.getText(1);
+  r.thumbPath = s.getText(2);
+  r.thumbMicroPath = s.getText(3);
+  return r;
+}
+
+static std::vector<PhotoDeleteRef> collectDeleteRefs(Stmt& s) {
+  std::vector<PhotoDeleteRef> refs;
+  while (s.step()) {
+    refs.push_back(rowToDeleteRef(s));
+  }
+  return refs;
+}
+
 // ── PhotoRepository ───────────────────────────────────────────────────────────
 
 PhotoRecord PhotoRepository::rowToPhoto(Stmt& s) const {
@@ -193,8 +210,9 @@ int64_t PhotoRepository::insertPhoto(const PhotoRecord& p) {
     "INSERT INTO photos("
     "folder_id,filename,file_hash,file_size,capture_time,"
     "camera_make,camera_model,lens_model,focal_length_mm,aperture,"
-    "shutter_speed,iso,width_px,height_px,edit_settings,luma_scale)"
-    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    "shutter_speed,iso,width_px,height_px,gps_lat,gps_lon,gps_alt_m,"
+    "edit_settings,luma_scale)"
+    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
   auto s = db_.prepare(sql);
   s.bind(1, p.folderId);
   s.bind(2, p.filename);
@@ -254,8 +272,20 @@ int64_t PhotoRepository::insertPhoto(const PhotoRecord& p) {
   } else {
     s.bindNull(14);
   }
-  s.bind(15, p.editSettings.empty() ? "{}" : p.editSettings);
-  s.bind(16, static_cast<double>(p.lumaScale));
+  if (p.gpsLat != 0.0 || p.gpsLon != 0.0) {
+    s.bind(15, p.gpsLat);
+    s.bind(16, p.gpsLon);
+  } else {
+    s.bindNull(15);
+    s.bindNull(16);
+  }
+  if (p.gpsAltM != 0.0) {
+    s.bind(17, p.gpsAltM);
+  } else {
+    s.bindNull(17);
+  }
+  s.bind(18, p.editSettings.empty() ? "{}" : p.editSettings);
+  s.bind(19, static_cast<double>(p.lumaScale));
   s.step();
   return db_.lastInsertRowid();
 }
@@ -420,10 +450,116 @@ void PhotoRepository::updateFolderAndCaptureTime(int64_t id, int64_t folderId,
   s.step();
 }
 
+void PhotoRepository::updateMetadata(int64_t id, const PhotoRecord& p) {
+  static const std::string sql =
+    "UPDATE photos SET capture_time=?,camera_make=?,camera_model=?,lens_model=?,"
+    "focal_length_mm=?,aperture=?,shutter_speed=?,iso=?,width_px=?,height_px=?,"
+    "gps_lat=?,gps_lon=?,gps_alt_m=? WHERE id=?";
+  auto s = db_.prepare(sql);
+  const auto bindTextOrNull = [&](int i, const std::string& v) {
+    if (v.empty()) {
+      s.bindNull(i);
+    } else {
+      s.bind(i, v);
+    }
+  };
+  bindTextOrNull(1, p.captureTime);
+  bindTextOrNull(2, p.cameraMake);
+  bindTextOrNull(3, p.cameraModel);
+  bindTextOrNull(4, p.lensModel);
+  if (p.focalLengthMm) {
+    s.bind(5, p.focalLengthMm);
+  } else {
+    s.bindNull(5);
+  }
+  if (p.aperture) {
+    s.bind(6, p.aperture);
+  } else {
+    s.bindNull(6);
+  }
+  bindTextOrNull(7, p.shutterSpeed);
+  if (p.iso) {
+    s.bind(8, p.iso);
+  } else {
+    s.bindNull(8);
+  }
+  if (p.widthPx) {
+    s.bind(9, p.widthPx);
+  } else {
+    s.bindNull(9);
+  }
+  if (p.heightPx) {
+    s.bind(10, p.heightPx);
+  } else {
+    s.bindNull(10);
+  }
+  if (p.gpsLat != 0.0 || p.gpsLon != 0.0) {
+    s.bind(11, p.gpsLat);
+    s.bind(12, p.gpsLon);
+  } else {
+    s.bindNull(11);
+    s.bindNull(12);
+  }
+  if (p.gpsAltM != 0.0) {
+    s.bind(13, p.gpsAltM);
+  } else {
+    s.bindNull(13);
+  }
+  s.bind(14, id);
+  s.step();
+}
+
 void PhotoRepository::clearAllThumbs() {
   db_.exec(
     "UPDATE photos SET thumb_path=NULL, thumb_micro_path=NULL, "
     "thumb_width=0, thumb_height=0, thumb_mtime=0");
+}
+
+// ── Deletion ────────────────────────────────────────────────────────────────
+
+std::vector<PhotoDeleteRef> PhotoRepository::photoRefsForIds(
+  const std::vector<int64_t>& ids) const {
+  auto s = db_.prepare(
+    "SELECT id, COALESCE(file_hash,''), COALESCE(thumb_path,''), "
+    "COALESCE(thumb_micro_path,'') FROM photos WHERE id=?");
+  std::vector<PhotoDeleteRef> refs;
+  for (const int64_t id : ids) {
+    s.reset();
+    s.bind(1, id);
+    if (s.step()) {
+      refs.push_back(rowToDeleteRef(s));
+    }
+  }
+  return refs;
+}
+
+std::vector<PhotoDeleteRef> PhotoRepository::photoRefsUnderFolder(int64_t folderId) const {
+  auto s = db_.prepare(
+    "WITH RECURSIVE sub(id) AS ("
+    "  SELECT id FROM folders WHERE id=?"
+    "  UNION ALL"
+    "  SELECT f.id FROM folders f JOIN sub ON f.parent_id = sub.id)"
+    " SELECT id, COALESCE(file_hash,''), COALESCE(thumb_path,''), "
+    "COALESCE(thumb_micro_path,'') FROM photos WHERE folder_id IN (SELECT id FROM sub)");
+  s.bind(1, folderId);
+  return collectDeleteRefs(s);
+}
+
+void PhotoRepository::deletePhotos(const std::vector<int64_t>& ids) {
+  auto txn = db_.transaction();
+  auto s = db_.prepare("DELETE FROM photos WHERE id=?");
+  for (const int64_t id : ids) {
+    s.reset();
+    s.bind(1, id);
+    s.step();
+  }
+  txn.commit();
+}
+
+void PhotoRepository::deleteFolder(int64_t folderId) {
+  auto s = db_.prepare("DELETE FROM folders WHERE id=?");
+  s.bind(1, folderId);
+  s.step();
 }
 
 // ── App settings ──────────────────────────────────────────────────────────────

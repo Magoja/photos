@@ -44,6 +44,17 @@ std::vector<uint8_t> rgbToRgba(const std::vector<uint8_t>& rgb, int pixelCount) 
   return rgba;
 }
 
+std::vector<uint8_t> rgbaToRgb(const std::vector<uint8_t>& rgba, int pixelCount) {
+  std::vector<uint8_t> rgb;
+  rgb.reserve(static_cast<size_t>(pixelCount) * 3);
+  for (int i = 0; i < pixelCount; ++i) {
+    rgb.push_back(rgba[i * 4 + 0]);
+    rgb.push_back(rgba[i * 4 + 1]);
+    rgb.push_back(rgba[i * 4 + 2]);
+  }
+  return rgb;
+}
+
 float computeLuma(const uint8_t* rgb, int pixelCount) {
   if (pixelCount <= 0) {
     return 0.f;
@@ -55,29 +66,71 @@ float computeLuma(const uint8_t* rgb, int pixelCount) {
   return static_cast<float>(sum / pixelCount);
 }
 
+// ── sRGB transfer (standard piecewise curve), operating on [0,1] ──────────────
+
+static float linearFromSrgb(float c) {
+  return c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
+}
+
+static float srgbFromLinear(float c) {
+  return c <= 0.0031308f ? c * 12.92f : 1.055f * std::pow(c, 1.f / 2.4f) - 0.055f;
+}
+
+// Decode table: input byte → linear-light value. Pure function of the byte, so
+// computed once.
+static const std::array<float, 256>& srgbDecodeTable() {
+  static const std::array<float, 256> table = [] {
+    std::array<float, 256> t{};
+    for (int v = 0; v < 256; ++v) {
+      t[v] = linearFromSrgb(v / 255.f);
+    }
+    return t;
+  }();
+  return table;
+}
+
+// Build a per-channel byte→sRGB-byte LUT (as float, to preserve precision for the
+// subsequent gamma-space contrast/saturation): decode to linear, apply the
+// exposure+white-balance gain, hard-clip to [0,1], re-encode to sRGB.
+static std::array<float, 256> buildExposureWbLut(float gain) {
+  std::array<float, 256> lut{};
+  const auto& decode = srgbDecodeTable();
+  for (int v = 0; v < 256; ++v) {
+    lut[v] = srgbFromLinear(std::clamp(decode[v] * gain, 0.f, 1.f)) * 255.f;
+  }
+  return lut;
+}
+
 std::vector<uint8_t> applyAdjustments(const std::vector<uint8_t>& src, int w, int h,
                                       const catalog::EditSettings& s) {
-  const float eMul = std::pow(2.f, s.exposure);
   const float t = s.temperature / 100.f;
-  const float rMul = 1.f + t * 0.30f;
-  const float gMul = 1.f + t * 0.05f;
-  const float bMul = 1.f - t * 0.30f;
+  const float eMul = std::pow(2.f, s.exposure);
+
+  // Exposure and white balance are light-domain gains → apply in linear light.
+  // When both are neutral, use an identity LUT so the result is byte-exact (no
+  // sRGB round-trip drift).
+  const bool lightNeutral = (s.exposure == 0.f && s.temperature == 0.f);
+  std::array<float, 256> identity{};
+  for (int v = 0; v < 256; ++v) {
+    identity[v] = static_cast<float>(v);
+  }
+  const std::array<float, 256> lutR =
+    lightNeutral ? identity : buildExposureWbLut(eMul * (1.f + t * 0.30f));
+  const std::array<float, 256> lutG =
+    lightNeutral ? identity : buildExposureWbLut(eMul * (1.f + t * 0.05f));
+  const std::array<float, 256> lutB =
+    lightNeutral ? identity : buildExposureWbLut(eMul * (1.f - t * 0.30f));
+
+  // Contrast and saturation are perceptual "look" controls → applied in gamma space.
   const float cFact = 1.f + s.contrast / 100.f;
   const float sFact = 1.f + s.saturation / 100.f;
 
   std::vector<uint8_t> dst(src.size());
   const int n = w * h;
   for (int i = 0; i < n; ++i) {
-    float r = src[i * 3 + 0];
-    float g = src[i * 3 + 1];
-    float b = src[i * 3 + 2];
-
-    r *= eMul;
-    g *= eMul;
-    b *= eMul;
-    r *= rMul;
-    g *= gMul;
-    b *= bMul;
+    float r = lutR[src[i * 3 + 0]];
+    float g = lutG[src[i * 3 + 1]];
+    float b = lutB[src[i * 3 + 2]];
 
     r = 128.f + (r - 128.f) * cFact;
     g = 128.f + (g - 128.f) * cFact;
@@ -204,6 +257,13 @@ std::vector<uint8_t> cropAndRotatePixels(const std::vector<uint8_t>& src, int sr
     }
   }
   return result;
+}
+
+std::vector<uint8_t> applyEditsToRgba(const std::vector<uint8_t>& rgb, int w, int h,
+                                      const catalog::EditSettings& s, int& outW, int& outH) {
+  const auto adjusted = applyAdjustments(rgb, w, h, s);
+  const auto cropped = cropAndRotatePixels(adjusted, w, h, s.crop, outW, outH);
+  return rgbToRgba(cropped, outW * outH);
 }
 
 }  // namespace util

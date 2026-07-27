@@ -90,6 +90,7 @@ add_test(NAME test_pixel_pipeline COMMAND test_pixel_pipeline)
 add_executable(test_raw_decoder
     test_raw_decoder.cpp
     ${CMAKE_SOURCE_DIR}/src/import/RawDecoder.cpp
+    ${CMAKE_SOURCE_DIR}/src/import/ExifParser.cpp
     ${CMAKE_SOURCE_DIR}/src/util/PixelPipeline.cpp
     ${CMAKE_SOURCE_DIR}/src/catalog/ThumbnailCache.cpp
     ${CMAKE_SOURCE_DIR}/src/catalog/PhotoRepository.cpp
@@ -111,6 +112,19 @@ target_link_libraries(test_raw_decoder PRIVATE
 )
 add_test(NAME test_raw_decoder COMMAND test_raw_decoder)
 
+# ── test_exif_parser ──────────────────────────────────────────────────────────
+add_executable(test_exif_parser
+    test_exif_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/import/ExifParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/export/ExifWriter.cpp
+)
+target_compile_definitions(test_exif_parser PRIVATE SPDLOG_COMPILED_LIB)
+target_link_libraries(test_exif_parser PRIVATE
+    Catch2::Catch2WithMain
+    SQLite::SQLite3
+)
+add_test(NAME test_exif_parser COMMAND test_exif_parser)
+
 # ── test_command ───────────────────────────────────────────────────────────────
 set(COMMAND_SOURCES_TEST
     ${CMAKE_SOURCE_DIR}/src/command/CommandRegistry.cpp
@@ -120,6 +134,8 @@ set(COMMAND_SOURCES_TEST
     ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageSaveHandler.cpp
     ${CMAKE_SOURCE_DIR}/src/command/handlers/CatalogPickHandler.cpp
     ${CMAKE_SOURCE_DIR}/src/command/handlers/CatalogOpenHandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/command/handlers/CatalogDeletePhotosHandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/command/handlers/CatalogDeleteFolderHandler.cpp
     ${CMAKE_SOURCE_DIR}/src/command/handlers/MetaSyncHandler.cpp
 )
 

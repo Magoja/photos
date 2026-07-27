@@ -10,10 +10,12 @@ namespace ui {
 class FolderTreePanel {
  public:
   using SelectCb = std::function<void(int64_t folderId)>;
+  using DeleteCb = std::function<void(int64_t folderId, const std::string& name)>;
 
   explicit FolderTreePanel(catalog::PhotoRepository& repo);
 
   void setOnSelect(SelectCb cb) { onSelect_ = std::move(cb); }
+  void setOnDelete(DeleteCb cb) { onDelete_ = std::move(cb); }
   void setSelectedFolder(int64_t id) { selectedFolder_ = id; }
 
   // Refresh folder/volume list from DB
@@ -28,9 +30,11 @@ class FolderTreePanel {
   void renderFolderChildren(int64_t parentId,
                             const std::map<int64_t, std::vector<catalog::FolderRecord>>& byParent,
                             const std::map<int64_t, int64_t>& counts);
+  void renderFolderContextMenu(const catalog::FolderRecord& folder);
 
   catalog::PhotoRepository& repo_;
   SelectCb onSelect_;
+  DeleteCb onDelete_;
 
   std::vector<catalog::VolumeRecord> volumes_;
   std::vector<catalog::FolderRecord> folders_;

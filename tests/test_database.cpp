@@ -260,6 +260,98 @@ TEST_CASE("PhotoRepository: luma_scale defaults to 1.0", "[db]") {
   REQUIRE(found->lumaScale == Catch::Approx(1.0f).epsilon(0.001));
 }
 
+TEST_CASE("PhotoRepository: GPS and camera metadata round-trip", "[db]") {
+  TempDb f;
+  PhotoRepository repo(*f.db);
+  const int64_t fid = insertFolderForTest(repo, "GPS1");
+
+  PhotoRecord p;
+  p.folderId = fid;
+  p.filename = "test_gps.jpg";
+  p.fileSize = 1000;
+  p.cameraMake = "Apple";
+  p.cameraModel = "iPhone 15 Pro";
+  p.captureTime = "2026-02-19T10:30:00";
+  p.gpsLat = -33.8688;  // Sydney: southern hemisphere (negative)
+  p.gpsLon = 151.2093;  // eastern hemisphere (positive)
+  p.gpsAltM = 52.0;
+
+  const int64_t pid = repo.insertPhoto(p);
+  REQUIRE(pid > 0);
+
+  const auto found = repo.findById(pid);
+  REQUIRE(found.has_value());
+  CHECK(found->cameraMake == "Apple");
+  CHECK(found->cameraModel == "iPhone 15 Pro");
+  CHECK(found->captureTime == "2026-02-19T10:30:00");
+  CHECK(found->gpsLat == Catch::Approx(-33.8688).epsilon(1e-9));
+  CHECK(found->gpsLon == Catch::Approx(151.2093).epsilon(1e-9));
+  CHECK(found->gpsAltM == Catch::Approx(52.0).epsilon(1e-9));
+}
+
+TEST_CASE("PhotoRepository: absent GPS reads back as zero", "[db]") {
+  TempDb f;
+  PhotoRepository repo(*f.db);
+  const int64_t fid = insertFolderForTest(repo, "GPS2");
+
+  PhotoRecord p;
+  p.folderId = fid;
+  p.filename = "test_nogps.jpg";
+  p.fileSize = 1000;
+  // no GPS set
+
+  const int64_t pid = repo.insertPhoto(p);
+  REQUIRE(pid > 0);
+
+  const auto found = repo.findById(pid);
+  REQUIRE(found.has_value());
+  CHECK(found->gpsLat == 0.0);
+  CHECK(found->gpsLon == 0.0);
+  CHECK(found->gpsAltM == 0.0);
+}
+
+TEST_CASE("PhotoRepository: updateMetadata backfills EXIF/GPS on an existing row", "[db]") {
+  TempDb f;
+  PhotoRepository repo(*f.db);
+  const int64_t fid = insertFolderForTest(repo, "META1");
+
+  // Row inserted with no metadata (simulates a pre-fix import).
+  PhotoRecord p;
+  p.folderId = fid;
+  p.filename = "backfill.jpg";
+  p.fileSize = 1000;
+  const int64_t pid = repo.insertPhoto(p);
+  REQUIRE(pid > 0);
+
+  {
+    const auto before = repo.findById(pid);
+    REQUIRE(before.has_value());
+    REQUIRE(before->gpsLat == 0.0);
+    REQUIRE(before->cameraMake.empty());
+  }
+
+  // Backfill freshly-decoded metadata.
+  PhotoRecord meta;
+  meta.captureTime = "2026-05-01T08:15:00";
+  meta.cameraMake = "Nikon";
+  meta.cameraModel = "Z8";
+  meta.iso = 400;
+  meta.gpsLat = -33.8688;
+  meta.gpsLon = 151.2093;
+  meta.gpsAltM = 12.5;
+  repo.updateMetadata(pid, meta);
+
+  const auto after = repo.findById(pid);
+  REQUIRE(after.has_value());
+  CHECK(after->captureTime == "2026-05-01T08:15:00");
+  CHECK(after->cameraMake == "Nikon");
+  CHECK(after->cameraModel == "Z8");
+  CHECK(after->iso == 400);
+  CHECK(after->gpsLat == Catch::Approx(-33.8688).epsilon(1e-9));
+  CHECK(after->gpsLon == Catch::Approx(151.2093).epsilon(1e-9));
+  CHECK(after->gpsAltM == Catch::Approx(12.5).epsilon(1e-9));
+}
+
 // ── Export presets seeded ─────────────────────────────────────────────────────
 TEST_CASE("Export presets seeded by Schema", "[db]") {
   TempDb f;

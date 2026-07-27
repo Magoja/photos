@@ -1,7 +1,7 @@
 #include "ThumbEditApplier.h"
 #include "TextureManager.h"
+#include "util/PixelPipeline.h"
 #include <fstream>
-#include <cmath>
 #include <cstring>
 #include <algorithm>
 
@@ -24,37 +24,11 @@ std::optional<ThumbPixels> applyEditsToThumb(const std::string& thumbPath,
     return std::nullopt;
   }
 
-  const float eMul = std::pow(2.f, s.exposure);
-  const float t = s.temperature / 100.f;
-  const float rMul = 1.f + t * 0.30f;
-  const float gMul = 1.f + t * 0.05f;
-  const float bMul = 1.f - t * 0.30f;
-  const float cFact = 1.f + s.contrast / 100.f;
-  const float sFact = 1.f + s.saturation / 100.f;
-
-  for (int i = 0, n = w * h; i < n; ++i) {
-    float r = rgba[i * 4 + 0];
-    float g = rgba[i * 4 + 1];
-    float b = rgba[i * 4 + 2];
-
-    r *= eMul;
-    g *= eMul;
-    b *= eMul;
-    r *= rMul;
-    g *= gMul;
-    b *= bMul;
-    r = 128.f + (r - 128.f) * cFact;
-    g = 128.f + (g - 128.f) * cFact;
-    b = 128.f + (b - 128.f) * cFact;
-    const float L = 0.299f * r + 0.587f * g + 0.114f * b;
-    r = L + (r - L) * sFact;
-    g = L + (g - L) * sFact;
-    b = L + (b - L) * sFact;
-
-    rgba[i * 4 + 0] = static_cast<uint8_t>(std::clamp(r, 0.f, 255.f));
-    rgba[i * 4 + 1] = static_cast<uint8_t>(std::clamp(g, 0.f, 255.f));
-    rgba[i * 4 + 2] = static_cast<uint8_t>(std::clamp(b, 0.f, 255.f));
-  }
+  // Reuse the canonical pipeline so the grid thumbnail matches the EditView
+  // preview / export exactly. The pipeline works on RGB, so round-trip through it.
+  const int pixelCount = w * h;
+  const auto adjustedRgb = util::applyAdjustments(util::rgbaToRgb(rgba, pixelCount), w, h, s);
+  rgba = util::rgbToRgba(adjustedRgb, pixelCount);
 
   // Apply crop
   const int cropX = static_cast<int>(s.crop.x * w);

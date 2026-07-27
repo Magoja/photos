@@ -82,7 +82,7 @@ Source layout under `src/` (modules added after the task list above are included
 - `import/` — `VolumeWatcher` (DiskArbitration), `FileScanner` (skips AppleDouble sidecars), `PreviewScanner` (import-UI previews), `RawDecoder`, `ImageDecoder` (generic JPEG/RAW source decode for export), `HashDedup`, `Importer`, `ExifParser`
 - `export/` — `Exporter`, `ExportSession`, `ExportPreset`
 - `command/` — `CommandRegistry`, `CommandResult`, `ICommandHandler`, `AppCommands` (startup registration of all handlers), `handlers/` (8 command handlers)
-- `ui/` — `Renderer`, `TextureManager`, `GridView`, `FolderTreePanel`, `FilterBar`, `FullscreenView`, `EditView`, `ImportDialog`, `ExportDialog`, `MetaSyncDialog`, `SettingsPanel`, `ThumbCropUV` + `ThumbEditApplier` (grid thumbnail crop/edit preview)
+- `ui/` — `Renderer`, `TextureManager`, `GridView`, `FolderTreePanel`, `FilterBar`, `FullscreenView`, `EditView`, `ImportDialog`, `ExportDialog`, `MetaSyncDialog`, `DeleteConfirmDialog` (confirm modal for `catalog.delete.*`), `SettingsPanel`, `ThumbCropUV` + `ThumbEditApplier` (grid thumbnail crop/edit preview)
 - `util/` — `Platform`, `ThreadPool`, `PixelPipeline` (exposure/temp/contrast/saturation), `ImageLoader` (libjpeg-turbo fallback when LibRaw rejects a file)
 
 ## Tasks

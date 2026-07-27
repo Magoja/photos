@@ -58,6 +58,16 @@ struct VolumeRecord {
   std::string lastSeen;
 };
 
+// Minimal photo info needed to clean up after a deletion: the row id, its content
+// hash (to detect thumbnails still shared by a surviving duplicate), and the two
+// cached thumbnail file paths.
+struct PhotoDeleteRef {
+  int64_t id = 0;
+  std::string fileHash;
+  std::string thumbPath;
+  std::string thumbMicroPath;
+};
+
 class PhotoRepository {
  public:
   explicit PhotoRepository(Database& db) : db_(db) {}
@@ -99,8 +109,24 @@ class PhotoRepository {
   void updateEditSettingsBulk(const std::vector<int64_t>& ids, const std::string& json);
   void updateFolderAndCaptureTime(int64_t id, int64_t folderId, const std::string& captureTime);
 
+  // Overwrite the EXIF/GPS metadata columns of an existing row (capture time,
+  // camera/lens, exposure, dimensions, GPS) from a freshly-decoded record.
+  // Used to backfill/repair metadata without re-importing files.
+  void updateMetadata(int64_t id, const PhotoRecord& p);
+
   // Clears all thumb_path / thumb_micro_path entries so thumbnails regenerate.
   void clearAllThumbs();
+
+  // ── Deletion ───────────────────────────────────────────────────────────────
+  // Thumbnail-cleanup refs for an explicit id list / for every photo in a folder
+  // subtree (recursive over folders.parent_id). Gather these BEFORE deleting rows.
+  std::vector<PhotoDeleteRef> photoRefsForIds(const std::vector<int64_t>& ids) const;
+  std::vector<PhotoDeleteRef> photoRefsUnderFolder(int64_t folderId) const;
+
+  // Remove photo rows by id (single transaction).
+  void deletePhotos(const std::vector<int64_t>& ids);
+  // Remove a folder row; child folders and photos cascade via ON DELETE CASCADE.
+  void deleteFolder(int64_t folderId);
 
   // ── App settings ─────────────────────────────────────────────────────────
   std::string getSetting(const std::string& key, const std::string& def = "") const;

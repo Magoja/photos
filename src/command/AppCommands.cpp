@@ -7,8 +7,11 @@
 #include "command/handlers/ImageSaveHandler.h"
 #include "command/handlers/CatalogPickHandler.h"
 #include "command/handlers/CatalogOpenHandler.h"
+#include "command/handlers/CatalogDeletePhotosHandler.h"
+#include "command/handlers/CatalogDeleteFolderHandler.h"
 #include "command/handlers/MetaSyncHandler.h"
 #include "command/handlers/ExportHandler.h"
+#include "command/handlers/DebugReimportMetadataHandler.h"
 #include "export/ExportSession.h"
 #include "ui/TextureManager.h"
 #include "ui/GridView.h"
@@ -37,12 +40,20 @@ CommandRegistry buildRegistry(catalog::PhotoRepository& repo, ui::TextureManager
                            std::make_unique<CatalogPickHandler>(
                              repo, [&](int64_t /*id*/, int /*picked*/) { grid.reload(); }));
   registry.registerHandler("catalog.photo.open", std::make_unique<CatalogOpenHandler>(nullptr));
+  registry.registerHandler("catalog.delete.photos",
+                           std::make_unique<CatalogDeletePhotosHandler>(repo));
+  registry.registerHandler("catalog.delete.folder",
+                           std::make_unique<CatalogDeleteFolderHandler>(repo));
 
   // metasync — doneCb is null; MetaSyncDialog fires its own doneCb from render()
   registry.registerHandler("metasync.apply", std::make_unique<MetaSyncHandler>(repo, nullptr));
 
   // export
   registry.registerHandler("export.photos", std::make_unique<ExportHandler>(session));
+
+  // debug
+  registry.registerHandler("debug.reimport.metadata",
+                           std::make_unique<DebugReimportMetadataHandler>(repo));
 
   return registry;
 }

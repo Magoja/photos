@@ -76,6 +76,7 @@ set(IMPORT_SOURCES
     src/import/FileScanner.cpp
     src/import/ImageDecoder.cpp
     src/import/RawDecoder.cpp
+    src/import/ExifParser.cpp
     src/import/HashDedup.cpp
     src/import/Importer.cpp
     src/import/PreviewScanner.cpp
@@ -92,6 +93,7 @@ set(UI_SOURCES
     src/ui/ImportDialog.cpp
     src/ui/ExportDialog.cpp
     src/ui/MetaSyncDialog.cpp
+    src/ui/DeleteConfirmDialog.cpp
     src/ui/SettingsPanel.cpp
     src/ui/ThumbCropUV.cpp
     src/ui/ThumbEditApplier.cpp
@@ -99,6 +101,7 @@ set(UI_SOURCES
 
 set(EXPORT_SOURCES
     src/export/Exporter.cpp
+    src/export/ExifWriter.cpp
     src/export/ExportSession.cpp
 )
 
@@ -111,8 +114,11 @@ set(COMMAND_SOURCES
     src/command/handlers/ImageSaveHandler.cpp
     src/command/handlers/CatalogPickHandler.cpp
     src/command/handlers/CatalogOpenHandler.cpp
+    src/command/handlers/CatalogDeletePhotosHandler.cpp
+    src/command/handlers/CatalogDeleteFolderHandler.cpp
     src/command/handlers/MetaSyncHandler.cpp
     src/command/handlers/ExportHandler.cpp
+    src/command/handlers/DebugReimportMetadataHandler.cpp
 )
 
 set(UTIL_SOURCES
