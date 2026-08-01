@@ -10,6 +10,7 @@ struct ExifData {
   std::string cameraMake;
   std::string cameraModel;
   std::string lensModel;
+  std::string software;  // EXIF Software tag (0x0131)
   std::string captureTime;  // ISO 8601: "YYYY-MM-DDTHH:MM:SS"
   double focalLengthMm = 0.0;
   double aperture = 0.0;

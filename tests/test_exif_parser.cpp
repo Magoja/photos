@@ -71,6 +71,16 @@ TEST_CASE("parseJpegExif round-trips GPS, camera, and date from the export write
   CHECK(ex->gpsAltM == Approx(52.0).margin(0.5));
 }
 
+TEST_CASE("exported JPEGs carry a Software tag identifying this tool") {
+  catalog::PhotoRecord rec;
+  rec.captureTime = "2026-02-19T10:30:00";
+  // No camera/GPS: Software must be present regardless of other fields.
+
+  const auto ex = parseJpegExif(jpegWithExifFrom(rec));
+  REQUIRE(ex.has_value());
+  CHECK(ex->software == "Jakeutil Photos Export");
+}
+
 TEST_CASE("parseJpegExif recovers southern/eastern hemisphere signs") {
   catalog::PhotoRecord rec;
   rec.captureTime = "2026-01-01T00:00:00";

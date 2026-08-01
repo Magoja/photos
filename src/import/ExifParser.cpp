@@ -294,6 +294,9 @@ std::optional<ExifData> parseJpegExif(std::span<const uint8_t> fileBytes) {
   if (const auto model = findEntry(c, ifd0, 0x0110)) {
     ex.cameraModel = readAscii(c, *model);
   }
+  if (const auto software = findEntry(c, ifd0, 0x0131)) {
+    ex.software = readAscii(c, *software);
+  }
   if (const auto exifPtr = findEntry(c, ifd0, 0x8769)) {
     parseExifSubIfd(c, readU32(c, exifPtr->valueOff), ex);
   }

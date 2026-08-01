@@ -6,6 +6,10 @@ using catalog::PhotoRecord;
 
 namespace export_ns {
 
+// EXIF Software tag written into every exported JPEG so files are identifiable
+// as produced by this tool.
+static constexpr const char* kExportSoftware = "Jakeutil Photos Export";
+
 // ── Minimal EXIF APP1 builder (little-endian TIFF) ───────────────────────────
 
 namespace {
@@ -95,7 +99,7 @@ static std::string captureTimeToExif(const std::string& iso) {
 std::vector<uint8_t> buildExifPayload(const PhotoRecord& rec) {
   // Layout plan (little-endian TIFF):
   //   Offset 0: TIFF header (8 bytes): II + 0x002A + IFD0 offset
-  //   IFD0 at offset 8: up to 4 entries (Make, Model, ExifIFD, [GPSIFD])
+  //   IFD0 at offset 8: up to 5 entries ([Make], [Model], Software, ExifIFD, [GPSIFD])
   //   ExifIFD: 1 entry (DateTimeOriginal)
   //   GPSIFD: if gps non-zero, 6 entries
   //   Heap: ASCII strings and rational values
@@ -109,7 +113,7 @@ std::vector<uint8_t> buildExifPayload(const PhotoRecord& rec) {
   const bool hasModel = !rec.cameraModel.empty();
 
   // Count IFD0 entries
-  int ifd0Count = 1;  // always ExifIFD pointer
+  int ifd0Count = 2;  // always: Software + ExifIFD pointer
   if (hasMake) {
     ++ifd0Count;
   }
@@ -159,6 +163,12 @@ std::vector<uint8_t> buildExifPayload(const PhotoRecord& rec) {
     const uint32_t off = static_cast<uint32_t>(heapStart + heap.size());
     const uint32_t len = appendAscii(heap, rec.cameraModel);
     writeIfdEntry(tiff, 0x0110, 2, len, off);  // Model, ASCII
+  }
+  // Software — always present; identifies files exported by this tool
+  {
+    const uint32_t off = static_cast<uint32_t>(heapStart + heap.size());
+    const uint32_t len = appendAscii(heap, kExportSoftware);
+    writeIfdEntry(tiff, 0x0131, 2, len, off);  // Software, ASCII
   }
   // ExifIFD pointer
   writeIfdEntry(tiff, 0x8769, 4, 1, static_cast<uint32_t>(exifIfdOff));
