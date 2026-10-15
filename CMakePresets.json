@@ -26,6 +26,15 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "core",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "PHOTOS_BUILD_APP": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -36,12 +45,21 @@
     {
       "name": "release",
       "configurePreset": "release"
+    },
+    {
+      "name": "core",
+      "configurePreset": "core"
     }
   ],
   "testPresets": [
     {
       "name": "debug",
       "configurePreset": "debug",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "core",
+      "configurePreset": "core",
       "output": { "outputOnFailure": true }
     }
   ]

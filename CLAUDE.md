@@ -28,6 +28,23 @@ cmake --build build/debug
 ctest --preset debug --output-on-failure  # run tests
 ```
 
+Core-only build (portable, no app — e.g. Linux CI/agent machines):
+```bash
+cmake --preset core                 # PHOTOS_BUILD_APP=OFF
+cmake --build --preset core
+ctest --preset core --output-on-failure
+```
+`photos_core` (catalog, import minus VolumeWatcher/PreviewScanner, export,
+command registry + handlers, ThreadPool/PixelPipeline/ImageLoader,
+ThumbCropUV) must stay free of ImGui/SDL/Metal/Cocoa includes — tests link
+only `photos_core`. App-only wiring lives in the app target: `main.mm`,
+`Platform.mm`, `AppCommands.cpp`, all of `ui/` except ThumbCropUV, and
+`VolumeWatcher.mm`/`PreviewScanner.cpp`. Platform dialogs are injected
+(`ExportSession::setConflictCallback`, wired to `util::askOverwriteFile` in
+`main.mm`; unset means exports skip conflicts). `test_raw_decoder` is only
+registered with CTest when its RAW data exists under
+`PHOTOS_TEST_DATA_DIR` (default: Jake's Mac test-data folder).
+
 ## Key architectural rules
 - DB writes: background/import thread only, guarded by std::mutex on Database instance
 - Thumbnail upload: background ThreadPool decodes JPEG → posts ThumbnailResult to main-thread queue → main thread uploads MTLTexture

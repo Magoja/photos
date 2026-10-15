@@ -4,6 +4,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 #include <cstdint>
 
@@ -15,6 +16,10 @@ namespace export_ns {
 class ExportSession {
  public:
   explicit ExportSession(catalog::PhotoRepository& repo);
+
+  // Inject how a destination-file conflict is resolved. The app wires this
+  // to the platform overwrite dialog; when unset, exports skip conflicts.
+  void setConflictCallback(ConflictCb cb) { conflictCb_ = std::move(cb); }
 
   // Start async export. Returns false (no-op) if already running.
   bool start(std::vector<int64_t> ids, std::string targetPath, int quality = 100);
@@ -31,6 +36,7 @@ class ExportSession {
 
  private:
   catalog::PhotoRepository& repo_;
+  ConflictCb conflictCb_;
   std::unique_ptr<Exporter> exporter_;
 
   std::atomic<bool> finished_{false};

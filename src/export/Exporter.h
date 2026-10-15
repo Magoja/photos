@@ -2,7 +2,7 @@
 #include "ExportPreset.h"
 #include "catalog/Database.h"
 #include "catalog/PhotoRepository.h"
-#include "util/Platform.h"
+#include "util/OverwriteChoice.h"
 #include <vector>
 #include <cstdint>
 #include <functional>

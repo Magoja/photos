@@ -1,159 +1,58 @@
-find_package(Catch2 3 REQUIRED HINTS /opt/homebrew)
+# Tests link against photos_core, so they build on any platform where the
+# core builds — no Homebrew paths, no .dylib names, no UI sources.
 
-set(HB "/opt/homebrew")
+find_package(Catch2 3 REQUIRED)
 
-include_directories(
-    ${CMAKE_SOURCE_DIR}/src
-    ${HB}/include
-)
-
-# Shared sources reused by multiple test targets
-set(CATALOG_SOURCES
-    ${CMAKE_SOURCE_DIR}/src/catalog/Database.cpp
-    ${CMAKE_SOURCE_DIR}/src/catalog/Schema.cpp
-    ${CMAKE_SOURCE_DIR}/src/catalog/PhotoRepository.cpp
-    ${CMAKE_SOURCE_DIR}/src/catalog/ThumbnailCache.cpp
-    ${CMAKE_SOURCE_DIR}/src/catalog/BackupManager.cpp
-)
-
-set(IMPORT_SOURCES_PLAIN
-    ${CMAKE_SOURCE_DIR}/src/import/HashDedup.cpp
-    ${CMAKE_SOURCE_DIR}/src/import/FileScanner.cpp
-    ${CMAKE_SOURCE_DIR}/src/import/RawDecoder.cpp
-    ${CMAKE_SOURCE_DIR}/src/import/Importer.cpp
-)
-
-set(UTIL_SOURCES_PLAIN
-    ${CMAKE_SOURCE_DIR}/src/util/ThreadPool.cpp
-    ${CMAKE_SOURCE_DIR}/src/util/PixelPipeline.cpp
-)
-
-set(COMMON_LIBS
-    Catch2::Catch2WithMain
-    SQLite::SQLite3
-    ${HB}/lib/libspdlog.dylib
-    ${HB}/lib/libfmt.dylib
-    ${HB}/lib/libturbojpeg.dylib
-    ${CMAKE_SOURCE_DIR}/third_party/imgui/imgui.cpp
-    ${CMAKE_SOURCE_DIR}/third_party/imgui/imgui_draw.cpp
-    ${CMAKE_SOURCE_DIR}/third_party/imgui/imgui_tables.cpp
-    ${CMAKE_SOURCE_DIR}/third_party/imgui/imgui_widgets.cpp
-)
-
-set(COMMON_DEFS SPDLOG_COMPILED_LIB)
-
-# ── test_database ─────────────────────────────────────────────────────────────
-add_executable(test_database test_database.cpp ${CATALOG_SOURCES}
-    ${CMAKE_SOURCE_DIR}/src/util/PixelPipeline.cpp
-)
-target_link_libraries(test_database PRIVATE
-    Catch2::Catch2WithMain SQLite::SQLite3
-    ${HB}/lib/libspdlog.dylib ${HB}/lib/libfmt.dylib
-    ${HB}/lib/libturbojpeg.dylib
-)
-target_compile_definitions(test_database PRIVATE SPDLOG_COMPILED_LIB)
+# ── test_database ────────────────────────────────────────────────────────────
+add_executable(test_database test_database.cpp)
+target_link_libraries(test_database PRIVATE photos_core Catch2::Catch2WithMain)
 add_test(NAME test_database COMMAND test_database)
 
-# ── test_hash_dedup ───────────────────────────────────────────────────────────
-add_executable(test_hash_dedup
-    test_hash_dedup.cpp
-    ${CATALOG_SOURCES}
-    ${CMAKE_SOURCE_DIR}/src/util/PixelPipeline.cpp
-    ${CMAKE_SOURCE_DIR}/src/import/HashDedup.cpp
-)
-target_link_libraries(test_hash_dedup PRIVATE
-    Catch2::Catch2WithMain SQLite::SQLite3
-    ${HB}/lib/libspdlog.dylib ${HB}/lib/libfmt.dylib
-    ${HB}/lib/libturbojpeg.dylib
-    ${HB}/lib/libxxhash.dylib
-)
-target_compile_definitions(test_hash_dedup PRIVATE SPDLOG_COMPILED_LIB)
+# ── test_hash_dedup ──────────────────────────────────────────────────────────
+add_executable(test_hash_dedup test_hash_dedup.cpp)
+target_link_libraries(test_hash_dedup PRIVATE photos_core Catch2::Catch2WithMain)
 add_test(NAME test_hash_dedup COMMAND test_hash_dedup)
 
-# ── test_thumb_crop ────────────────────────────────────────────────────────────
-add_executable(test_thumb_crop
-    test_thumb_crop.cpp
-    ${CMAKE_SOURCE_DIR}/src/ui/ThumbCropUV.cpp
-)
-target_link_libraries(test_thumb_crop PRIVATE Catch2::Catch2WithMain)
+# ── test_thumb_crop ──────────────────────────────────────────────────────────
+add_executable(test_thumb_crop test_thumb_crop.cpp)
+target_link_libraries(test_thumb_crop PRIVATE photos_core Catch2::Catch2WithMain)
 add_test(NAME test_thumb_crop COMMAND test_thumb_crop)
 
-# ── test_pixel_pipeline ───────────────────────────────────────────────────────
-add_executable(test_pixel_pipeline
-    test_pixel_pipeline.cpp
-    ${CMAKE_SOURCE_DIR}/src/util/PixelPipeline.cpp
-)
-target_link_libraries(test_pixel_pipeline PRIVATE Catch2::Catch2WithMain)
+# ── test_pixel_pipeline ──────────────────────────────────────────────────────
+add_executable(test_pixel_pipeline test_pixel_pipeline.cpp)
+target_link_libraries(test_pixel_pipeline PRIVATE photos_core Catch2::Catch2WithMain)
 add_test(NAME test_pixel_pipeline COMMAND test_pixel_pipeline)
 
-# ── test_raw_decoder ──────────────────────────────────────────────────────────
-add_executable(test_raw_decoder
-    test_raw_decoder.cpp
-    ${CMAKE_SOURCE_DIR}/src/import/RawDecoder.cpp
-    ${CMAKE_SOURCE_DIR}/src/import/ExifParser.cpp
-    ${CMAKE_SOURCE_DIR}/src/util/PixelPipeline.cpp
-    ${CMAKE_SOURCE_DIR}/src/catalog/ThumbnailCache.cpp
-    ${CMAKE_SOURCE_DIR}/src/catalog/PhotoRepository.cpp
-    ${CMAKE_SOURCE_DIR}/src/catalog/Database.cpp
-    ${CMAKE_SOURCE_DIR}/src/catalog/Schema.cpp
-    ${CMAKE_SOURCE_DIR}/src/catalog/BackupManager.cpp
-)
-target_compile_definitions(test_raw_decoder PRIVATE
-    SPDLOG_COMPILED_LIB
-    "TEST_DATA_DIR=\"/Users/magoja/Documents/project/photos test data\""
-)
-target_link_libraries(test_raw_decoder PRIVATE
-    Catch2::Catch2WithMain
-    SQLite::SQLite3
-    ${HB}/lib/libspdlog.dylib
-    ${HB}/lib/libfmt.dylib
-    ${HB}/lib/libturbojpeg.dylib
-    ${HB}/lib/libraw.dylib
-)
-add_test(NAME test_raw_decoder COMMAND test_raw_decoder)
+# ── test_raw_decoder ─────────────────────────────────────────────────────────
+# Needs a real RAW file from a machine-local data folder. The folder can be
+# pointed elsewhere with -DPHOTOS_TEST_DATA_DIR=...; when the file is absent
+# the test binary still builds but is not registered with CTest.
+set(PHOTOS_TEST_DATA_DIR "/Users/magoja/Documents/project/photos test data"
+    CACHE PATH "Folder holding the RAW test data (20260219/5F1A2661.CR2)")
 
-# ── test_exif_parser ──────────────────────────────────────────────────────────
-add_executable(test_exif_parser
-    test_exif_parser.cpp
-    ${CMAKE_SOURCE_DIR}/src/import/ExifParser.cpp
-    ${CMAKE_SOURCE_DIR}/src/export/ExifWriter.cpp
+add_executable(test_raw_decoder test_raw_decoder.cpp)
+target_compile_definitions(test_raw_decoder PRIVATE
+    "TEST_DATA_DIR=\"${PHOTOS_TEST_DATA_DIR}\""
 )
-target_compile_definitions(test_exif_parser PRIVATE SPDLOG_COMPILED_LIB)
-target_link_libraries(test_exif_parser PRIVATE
-    Catch2::Catch2WithMain
-    SQLite::SQLite3
-)
+target_link_libraries(test_raw_decoder PRIVATE photos_core Catch2::Catch2WithMain)
+if(EXISTS "${PHOTOS_TEST_DATA_DIR}/20260219/5F1A2661.CR2")
+  add_test(NAME test_raw_decoder COMMAND test_raw_decoder)
+else()
+  message(STATUS "test_raw_decoder: RAW test data not found under "
+                 "${PHOTOS_TEST_DATA_DIR} — target built but not registered")
+endif()
+
+# ── test_exif_parser ─────────────────────────────────────────────────────────
+add_executable(test_exif_parser test_exif_parser.cpp)
+target_link_libraries(test_exif_parser PRIVATE photos_core Catch2::Catch2WithMain)
 add_test(NAME test_exif_parser COMMAND test_exif_parser)
 
-# ── test_command ───────────────────────────────────────────────────────────────
-set(COMMAND_SOURCES_TEST
-    ${CMAKE_SOURCE_DIR}/src/command/CommandRegistry.cpp
-    ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageAdjustHandler.cpp
-    ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageRevertHandler.cpp
-    ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageCropHandler.cpp
-    ${CMAKE_SOURCE_DIR}/src/command/handlers/ImageSaveHandler.cpp
-    ${CMAKE_SOURCE_DIR}/src/command/handlers/CatalogPickHandler.cpp
-    ${CMAKE_SOURCE_DIR}/src/command/handlers/CatalogOpenHandler.cpp
-    ${CMAKE_SOURCE_DIR}/src/command/handlers/CatalogDeletePhotosHandler.cpp
-    ${CMAKE_SOURCE_DIR}/src/command/handlers/CatalogDeleteFolderHandler.cpp
-    ${CMAKE_SOURCE_DIR}/src/command/handlers/MetaSyncHandler.cpp
-)
-
+# ── test_command ─────────────────────────────────────────────────────────────
 add_executable(test_command
     test_command_registry.cpp
     test_command_image.cpp
     test_command_catalog.cpp
     test_command_metasync.cpp
-    ${COMMAND_SOURCES_TEST}
-    ${CATALOG_SOURCES}
-    ${UTIL_SOURCES_PLAIN}
 )
-target_link_libraries(test_command PRIVATE
-    Catch2::Catch2WithMain
-    SQLite::SQLite3
-    ${HB}/lib/libspdlog.dylib
-    ${HB}/lib/libfmt.dylib
-    ${HB}/lib/libturbojpeg.dylib
-)
-target_compile_definitions(test_command PRIVATE SPDLOG_COMPILED_LIB)
+target_link_libraries(test_command PRIVATE photos_core Catch2::Catch2WithMain)
 add_test(NAME test_command COMMAND test_command)

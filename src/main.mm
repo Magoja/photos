@@ -786,6 +786,8 @@ int main(int /*argc*/, char** /*argv*/) {
   ui::EditView editView(repo, thumbCache, texMgr, (MTLDevicePtr)device);
   ui::ImportDialog importDlg(db, texMgr);
   export_ns::ExportSession exportSession(repo);
+  exportSession.setConflictCallback(
+    [](const std::string& filename) { return util::askOverwriteFile(filename); });
   ui::ExportDialog exportDlg(repo, exportSession);
   ui::MetaSyncDialog metaSyncDlg(repo, texMgr);
   ui::SettingsPanel settingsPanel(repo, dbPath);
